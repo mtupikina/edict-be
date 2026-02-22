@@ -1,0 +1,7 @@
+# Build and dependencies
+dist
+node_modules
+coverage
+
+# Generated
+*.min.js
