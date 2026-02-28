@@ -38,12 +38,16 @@ describe('WordsService', () => {
       .mockReturnValue({ exec: jest.fn().mockResolvedValue(leanResult) }),
   });
 
+  const countExecChain = (n: number) => ({
+    exec: jest.fn().mockResolvedValue(n),
+  });
   const mockWordModel = {
     find: jest.fn().mockReturnValue({
       sort: jest.fn().mockReturnValue({
         limit: jest.fn().mockReturnValue(leanChain([mockWord])),
       }),
     }),
+    countDocuments: jest.fn().mockReturnValue(countExecChain(1)),
     findById: jest.fn().mockReturnValue(findByIdChain(mockWord, mockWord)),
     findOne: jest.fn().mockReturnValue(execChain(null)),
     create: jest.fn().mockResolvedValue({ toObject: () => mockWord }),
@@ -246,6 +250,75 @@ describe('WordsService', () => {
       );
       expect(mockWordModel.find).toHaveBeenCalledWith({});
       expect(result.items).toHaveLength(1);
+    });
+
+    it('should filter by word search case-insensitively when search provided', async () => {
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(20, undefined, 'createdAt', 'desc', 'hello');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const query = mockWordModel.find.mock.calls[0][0] as { word: RegExp };
+      expect(query.word).toBeInstanceOf(RegExp);
+      expect(query.word.source).toBe('hello');
+      expect(query.word.flags).toContain('i');
+    });
+
+    it('should not add search filter when search is empty string', async () => {
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(20, undefined, 'createdAt', 'desc', '');
+      expect(mockWordModel.find).toHaveBeenCalledWith({});
+    });
+
+    it('should combine search filter with cursor query when both provided', async () => {
+      const cursorPayload = Buffer.from(
+        JSON.stringify({
+          v: new Date().toISOString(),
+          id: String(mockWord._id),
+        }),
+        'utf8',
+      ).toString('base64');
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(2, cursorPayload, 'createdAt', 'desc', 'foo');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const query = mockWordModel.find.mock.calls[0][0] as {
+        $and: [{ word: RegExp }, unknown];
+      };
+      expect(query.$and).toHaveLength(2);
+      expect(query.$and[0].word).toBeInstanceOf(RegExp);
+      expect(query.$and[0].word.source).toBe('foo');
+      expect(query.$and[0].word.flags).toContain('i');
+
+      expect(query.$and[1]).toEqual(
+        expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          $or: expect.any(Array),
+        }),
+      );
+    });
+
+    it('should escape regex special characters in search term', async () => {
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(20, undefined, 'createdAt', 'desc', 'a+b');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const query = mockWordModel.find.mock.calls[0][0] as { word: RegExp };
+      expect(query.word).toBeInstanceOf(RegExp);
+      expect(query.word.source).toBe('a\\+b');
+      expect(query.word.flags).toContain('i');
     });
   });
 

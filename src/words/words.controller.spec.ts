@@ -11,6 +11,7 @@ describe('WordsController', () => {
       items: [{ _id: '1', word: 'hello', translation: 'привіт' }],
       nextCursor: null,
       hasMore: false,
+      totalCount: 1,
     }),
     findOne: jest.fn().mockResolvedValue({ _id: '1', word: 'hello' }),
     create: jest.fn().mockResolvedValue({ _id: '1', word: 'hello' }),
@@ -46,12 +47,14 @@ describe('WordsController', () => {
         items: expect.any(Array),
         nextCursor: null,
         hasMore: false,
+        totalCount: 1,
       });
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
         20,
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -62,6 +65,7 @@ describe('WordsController', () => {
         'abc123',
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -72,6 +76,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -82,6 +87,7 @@ describe('WordsController', () => {
         undefined,
         'word',
         'asc',
+        undefined,
       );
     });
 
@@ -92,6 +98,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -102,6 +109,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -112,6 +120,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -122,6 +131,7 @@ describe('WordsController', () => {
         undefined,
         'translation',
         'asc',
+        undefined,
       );
     });
 
@@ -132,6 +142,7 @@ describe('WordsController', () => {
         undefined,
         'word',
         'desc',
+        undefined,
       );
     });
 
@@ -142,6 +153,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -152,6 +164,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -162,6 +175,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -177,6 +191,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -187,6 +202,7 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
       );
     });
 
@@ -197,6 +213,29 @@ describe('WordsController', () => {
         undefined,
         'createdAt',
         'desc',
+        undefined,
+      );
+    });
+
+    it('should pass search to service when provided', async () => {
+      await controller.findAll('20', undefined, 'createdAt', 'desc', 'hello');
+      expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        'hello',
+      );
+    });
+
+    it('should pass undefined search when search is empty or whitespace', async () => {
+      await controller.findAll('20', undefined, undefined, undefined, '   ');
+      expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        undefined,
       );
     });
   });

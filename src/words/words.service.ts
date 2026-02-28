@@ -18,11 +18,17 @@ export interface WordsPage {
   items: Word[];
   nextCursor: string | null;
   hasMore: boolean;
+  totalCount: number;
 }
 
 interface CursorPayload {
   v: string | number; // sort field value (string or ISO date as string)
   id: string;
+}
+
+/** Escape special regex characters so user search is treated as literal. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 @Injectable()
@@ -37,9 +43,16 @@ export class WordsService {
     cursor?: string,
     sortBy: WordsSortBy = 'createdAt',
     order: WordsOrder = 'desc',
+    search?: string,
   ): Promise<WordsPage> {
     const sortDir = order === 'asc' ? 1 : -1;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortDir, _id: sortDir };
+
+    const searchTerm = typeof search === 'string' ? search.trim() : undefined;
+    const searchFilter =
+      searchTerm !== undefined && searchTerm !== ''
+        ? { word: new RegExp(escapeRegex(searchTerm), 'i') }
+        : null;
 
     let query: Record<string, unknown> = {};
     if (cursor) {
@@ -76,12 +89,23 @@ export class WordsService {
       }
     }
 
-    const items = await this.wordModel
-      .find(query)
-      .sort(sort)
-      .limit(limit + 1)
-      .lean()
-      .exec();
+    if (searchFilter) {
+      query =
+        Object.keys(query).length > 0
+          ? { $and: [searchFilter, query] }
+          : searchFilter;
+    }
+
+    const countQuery = searchFilter ?? {};
+    const [items, totalCount] = await Promise.all([
+      this.wordModel
+        .find(query)
+        .sort(sort)
+        .limit(limit + 1)
+        .lean()
+        .exec(),
+      this.wordModel.countDocuments(countQuery).exec(),
+    ]);
 
     const hasMore = items.length > limit;
     const pageItems = hasMore ? items.slice(0, limit) : items;
@@ -109,6 +133,7 @@ export class WordsService {
       items: pageItems as Word[],
       nextCursor,
       hasMore,
+      totalCount,
     };
   }
 

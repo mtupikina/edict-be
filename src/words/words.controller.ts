@@ -27,6 +27,7 @@ export class WordsController {
     @Query('cursor') cursor?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
+    @Query('search') search?: string,
   ): Promise<WordsPage> {
     const limitNum = limit
       ? Math.min(Math.max(1, parseInt(limit, 10)), 100)
@@ -37,11 +38,14 @@ export class WordsController {
       ? (sortBy as 'word' | 'translation' | 'createdAt')
       : 'createdAt';
     const validOrder = order === 'asc' || order === 'desc' ? order : 'desc';
+    const searchParam =
+      typeof search === 'string' ? search.trim() || undefined : undefined;
     return this.wordsService.findAll(
       limitNum,
       cursor || undefined,
       validSortBy,
       validOrder,
+      searchParam,
     );
   }
 
