@@ -6,6 +6,27 @@ import { WordsPage, WordsService } from './words.service';
 describe('WordsController', () => {
   let controller: WordsController;
 
+  const toVerifyList = [
+    {
+      _id: '1',
+      word: 'hello',
+      translation: 'привіт',
+      lastVerifiedAt: null,
+      canEToU: false,
+      canUToE: false,
+      toVerifyNextTime: true,
+    },
+  ];
+  const quizWords = [
+    {
+      _id: '2',
+      word: 'world',
+      translation: 'світ',
+      canEToU: false,
+      canUToE: false,
+      lastVerifiedAt: null,
+    },
+  ];
   const mockWordsService = {
     findAll: jest.fn().mockResolvedValue({
       items: [{ _id: '1', word: 'hello', translation: 'привіт' }],
@@ -19,6 +40,9 @@ describe('WordsController', () => {
       .fn()
       .mockResolvedValue({ _id: '1', word: 'hello', translation: 'updated' }),
     remove: jest.fn().mockResolvedValue(undefined),
+    findToVerifyList: jest.fn().mockResolvedValue(toVerifyList),
+    generateVerifyQuiz: jest.fn().mockResolvedValue(quizWords),
+    submitVerifyQuiz: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -272,6 +296,46 @@ describe('WordsController', () => {
       const result = await controller.remove('1');
       expect(result).toEqual({ message: 'Word deleted successfully' });
       expect(mockWordsService.remove).toHaveBeenCalledWith('1');
+    });
+  });
+
+  describe('getToVerifyList', () => {
+    it('should return list of words to verify', async () => {
+      const result = await controller.getToVerifyList();
+      expect(result).toEqual(toVerifyList);
+      expect(mockWordsService.findToVerifyList).toHaveBeenCalledWith();
+    });
+  });
+
+  describe('generateVerifyQuiz', () => {
+    it('should generate quiz with default count', async () => {
+      const result = await controller.generateVerifyQuiz({});
+      expect(result).toEqual(quizWords);
+      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(50);
+    });
+
+    it('should generate quiz with given count', async () => {
+      await controller.generateVerifyQuiz({ count: 20 });
+      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(20);
+    });
+  });
+
+  describe('submitVerifyQuiz', () => {
+    it('should submit quiz updates', async () => {
+      const dto = {
+        updates: [
+          {
+            wordId: '2',
+            canEToU: true,
+            canUToE: false,
+            toVerifyNextTime: true,
+          },
+        ],
+      };
+      await controller.submitVerifyQuiz(dto);
+      expect(mockWordsService.submitVerifyQuiz).toHaveBeenCalledWith(
+        dto.updates,
+      );
     });
   });
 });

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -12,14 +13,43 @@ import {
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateWordDto } from './dto/create-word.dto';
+import { GenerateVerifyQuizDto } from './dto/generate-verify-quiz.dto';
+import { SubmitVerifyQuizDto } from './dto/submit-verify-quiz.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Word } from './schemas/word.schema';
-import { WordsPage, WordsService } from './words.service';
+import {
+  QuizWord,
+  ToVerifyWord,
+  WordsPage,
+  WordsService,
+  type WordsServiceContract,
+} from './words.service';
 
 @Controller('words')
 @UseGuards(JwtAuthGuard)
 export class WordsController {
-  constructor(private readonly wordsService: WordsService) {}
+  constructor(
+    @Inject(WordsService)
+    private readonly wordsService: WordsServiceContract,
+  ) {}
+
+  @Get('verify/list')
+  async getToVerifyList(): Promise<ToVerifyWord[]> {
+    return await this.wordsService.findToVerifyList();
+  }
+
+  @Post('verify/generate')
+  async generateVerifyQuiz(
+    @Body() dto: GenerateVerifyQuizDto,
+  ): Promise<QuizWord[]> {
+    const count = dto.count ?? 50;
+    return await this.wordsService.generateVerifyQuiz(count);
+  }
+
+  @Post('verify/submit')
+  async submitVerifyQuiz(@Body() dto: SubmitVerifyQuizDto): Promise<void> {
+    await this.wordsService.submitVerifyQuiz(dto.updates);
+  }
 
   @Get()
   async findAll(

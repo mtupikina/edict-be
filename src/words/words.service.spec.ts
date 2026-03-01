@@ -5,6 +5,7 @@ import { Types } from 'mongoose';
 
 import { WordsService } from './words.service';
 import { Word } from './schemas/word.schema';
+import { WordVerifyUpdateDto } from './dto/submit-verify-quiz.dto';
 
 describe('WordsService', () => {
   let service: WordsService;
@@ -41,17 +42,71 @@ describe('WordsService', () => {
   const countExecChain = (n: number) => ({
     exec: jest.fn().mockResolvedValue(n),
   });
-  const mockWordModel = {
-    find: jest.fn().mockReturnValue({
+
+  const verifyListChain = (result: unknown[]) => ({
+    select: jest.fn().mockReturnValue({
       sort: jest.fn().mockReturnValue({
-        limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(result),
+        }),
       }),
+    }),
+  });
+
+  const quizBucketChain = (result: unknown[]) => ({
+    select: jest.fn().mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        limit: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(result),
+          }),
+        }),
+      }),
+    }),
+  });
+
+  const mockWordModel = {
+    find: jest.fn().mockImplementation((query: Record<string, unknown>) => {
+      if (query?.toVerifyNextTime === true) {
+        return verifyListChain([
+          {
+            ...mockWord,
+            _id: mockWord._id,
+            word: 'hello',
+            translation: 'привіт',
+            lastVerifiedAt: null,
+            canEToU: false,
+            canUToE: false,
+            toVerifyNextTime: true,
+          },
+        ]);
+      }
+      if (query?.createdAt !== undefined) {
+        return quizBucketChain([
+          {
+            _id: new Types.ObjectId(),
+            word: 'quiz',
+            translation: 'квіз',
+            canEToU: false,
+            canUToE: false,
+            lastVerifiedAt: null,
+          },
+        ]);
+      }
+      return {
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      };
     }),
     countDocuments: jest.fn().mockReturnValue(countExecChain(1)),
     findById: jest.fn().mockReturnValue(findByIdChain(mockWord, mockWord)),
     findOne: jest.fn().mockReturnValue(execChain(null)),
     create: jest.fn().mockResolvedValue({ toObject: () => mockWord }),
-    findByIdAndUpdate: jest.fn().mockReturnValue(leanChain(mockWord)),
+    findByIdAndUpdate: jest.fn().mockReturnValue({
+      ...leanChain(mockWord),
+      exec: jest.fn().mockResolvedValue(undefined),
+    }),
     findByIdAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
   };
 
@@ -425,6 +480,71 @@ describe('WordsService', () => {
       mockWordModel.findByIdAndDelete.mockReturnValueOnce(execChain(null));
       await expect(service.remove('507f1f77bcf86cd799439011')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('findToVerifyList', () => {
+    it('should return words with toVerifyNextTime true', async () => {
+      const result = await service.findToVerifyList();
+      expect(mockWordModel.find).toHaveBeenCalledWith({
+        toVerifyNextTime: true,
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        word: 'hello',
+        translation: 'привіт',
+        toVerifyNextTime: true,
+      });
+      expect(result[0]).toHaveProperty('_id');
+    });
+  });
+
+  describe('generateVerifyQuiz', () => {
+    it('should return quiz words from three buckets', async () => {
+      const result = await service.generateVerifyQuiz(10);
+      expect(mockWordModel.find).toHaveBeenCalledTimes(3);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0]).toHaveProperty('_id');
+      expect(result[0]).toHaveProperty('word');
+      expect(result[0]).toHaveProperty('translation');
+      expect(result[0]).toHaveProperty('canEToU');
+      expect(result[0]).toHaveProperty('canUToE');
+      expect(result[0]).toHaveProperty('lastVerifiedAt');
+    });
+
+    it('should request correct bucket sizes (25% each for first two, remainder for third)', async () => {
+      await service.generateVerifyQuiz(10);
+      const findCalls = mockWordModel.find.mock.results;
+      expect(findCalls.length).toBe(3);
+      const limitCalls = findCalls
+        .map((r) => (r as { value?: { select?: unknown } }).value?.select)
+        .filter(Boolean);
+      expect(limitCalls.length).toBe(3);
+      // With 25% split for count 10: n1=2, n2=2, n3=6
+    });
+  });
+
+  describe('submitVerifyQuiz', () => {
+    it('should update words with lastVerifiedAt', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          canEToU: true,
+          canUToE: false,
+          toVerifyNextTime: true,
+        },
+      ];
+      await service.submitVerifyQuiz(updates);
+      const dateMatcher: unknown = expect.any(Date) as unknown;
+      expect(mockWordModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        updates[0].wordId,
+        expect.objectContaining({
+          canEToU: true,
+          canUToE: false,
+          toVerifyNextTime: true,
+          lastVerifiedAt: dateMatcher,
+        }),
       );
     });
   });
