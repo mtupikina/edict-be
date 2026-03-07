@@ -399,6 +399,28 @@ describe('WordsService', () => {
       expect(mockWordModel.create).toHaveBeenCalled();
     });
 
+    it('should set toVerifyNextTime to true when not provided (new words go to verify list)', async () => {
+      const dto = { word: 'newword' };
+      await service.create(dto);
+      expect(mockWordModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          word: 'newword',
+          toVerifyNextTime: true,
+        }),
+      );
+    });
+
+    it('should respect toVerifyNextTime when provided in dto', async () => {
+      const dto = { word: 'other', toVerifyNextTime: false };
+      await service.create(dto);
+      expect(mockWordModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          word: 'other',
+          toVerifyNextTime: false,
+        }),
+      );
+    });
+
     it('should throw ConflictException when word already exists', async () => {
       mockWordModel.findOne.mockReturnValueOnce(execChain({ word: 'hello' }));
       await expect(service.create({ word: 'hello' })).rejects.toThrow(

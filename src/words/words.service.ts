@@ -200,6 +200,7 @@ export class WordsService {
     const created = await this.wordModel.create({
       ...dto,
       word: dto.word.trim(),
+      toVerifyNextTime: dto.toVerifyNextTime ?? true,
     });
     return created.toObject();
   }
