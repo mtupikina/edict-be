@@ -24,6 +24,12 @@ export class User {
   })
   roleIds: Types.ObjectId[];
 
+  @Prop({
+    type: [MongooseSchema.Types.ObjectId],
+    ref: 'User',
+  })
+  tutorIds?: Types.ObjectId[];
+
   @Prop({ default: Date.now })
   createdAt: Date;
 
