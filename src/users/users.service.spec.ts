@@ -1,18 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 
+import { Types } from 'mongoose';
+
 import { UsersService } from './users.service';
-import { User, UserRole } from './schemas/user.schema';
+import { User } from './schemas/user.schema';
 
 describe('UsersService', () => {
   let service: UsersService;
 
   const mockUser = {
-    _id: '507f1f77bcf86cd799439011',
+    _id: new Types.ObjectId('507f1f77bcf86cd799439011'),
     firstName: 'John',
     lastName: 'Doe',
     email: 'john@example.com',
-    role: UserRole.STUDENT,
+    roleIds: [new Types.ObjectId('507f1f77bcf86cd799439012')],
     createdAt: new Date(),
     updatedAt: new Date(),
   };

@@ -107,6 +107,15 @@ describe('WordsService', () => {
       ...leanChain(mockWord),
       exec: jest.fn().mockResolvedValue(undefined),
     }),
+    bulkWrite: jest.fn().mockResolvedValue({
+      insertedCount: 0,
+      matchedCount: 0,
+      modifiedCount: 0,
+      deletedCount: 0,
+      upsertedCount: 0,
+      upsertedIds: {},
+      insertedIds: {},
+    }),
     findByIdAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
   };
 
@@ -548,7 +557,7 @@ describe('WordsService', () => {
   });
 
   describe('submitVerifyQuiz', () => {
-    it('should update words with lastVerifiedAt', async () => {
+    it('should bulk-update words with lastVerifiedAt', async () => {
       const updates: WordVerifyUpdateDto[] = [
         {
           wordId: String(mockWord._id),
@@ -558,16 +567,29 @@ describe('WordsService', () => {
         },
       ];
       await service.submitVerifyQuiz(updates);
-      const dateMatcher: unknown = expect.any(Date) as unknown;
-      expect(mockWordModel.findByIdAndUpdate).toHaveBeenCalledWith(
-        updates[0].wordId,
-        expect.objectContaining({
-          canEToU: true,
-          canUToE: false,
-          toVerifyNextTime: true,
-          lastVerifiedAt: dateMatcher,
-        }),
-      );
+      expect(mockWordModel.bulkWrite).toHaveBeenCalledTimes(1);
+      type VerifyQuizBulkOp = {
+        updateOne: {
+          filter: { _id: Types.ObjectId };
+          update: { $set: Record<string, unknown> };
+        };
+      };
+      const firstBulkWriteCall = mockWordModel.bulkWrite.mock
+        .calls[0] as unknown as [VerifyQuizBulkOp[], { ordered: boolean }];
+      const [ops, options] = firstBulkWriteCall;
+      expect(options).toEqual({ ordered: false });
+      expect(ops[0].updateOne.filter._id.equals(mockWord._id)).toBe(true);
+      expect(ops[0].updateOne.update.$set).toMatchObject({
+        canEToU: true,
+        canUToE: false,
+        toVerifyNextTime: true,
+      });
+      expect(ops[0].updateOne.update.$set.lastVerifiedAt).toBeInstanceOf(Date);
+    });
+
+    it('should skip bulkWrite when updates array is empty', async () => {
+      await service.submitVerifyQuiz([]);
+      expect(mockWordModel.bulkWrite).not.toHaveBeenCalled();
     });
   });
 });

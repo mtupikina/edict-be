@@ -352,20 +352,27 @@ export class WordsService {
   }
 
   async submitVerifyQuiz(updates: WordVerifyUpdateDto[]): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
     const now = new Date();
-    await Promise.all(
-      updates.map((u) =>
-        this.wordModel
-          .findByIdAndUpdate(u.wordId, {
-            ...(u.canEToU !== undefined && { canEToU: u.canEToU }),
-            ...(u.canUToE !== undefined && { canUToE: u.canUToE }),
-            ...(u.toVerifyNextTime !== undefined && {
-              toVerifyNextTime: u.toVerifyNextTime,
-            }),
-            lastVerifiedAt: now,
-          })
-          .exec(),
-      ),
+    await this.wordModel.bulkWrite(
+      updates.map((u) => ({
+        updateOne: {
+          filter: { _id: new Types.ObjectId(u.wordId) },
+          update: {
+            $set: {
+              ...(u.canEToU !== undefined && { canEToU: u.canEToU }),
+              ...(u.canUToE !== undefined && { canUToE: u.canUToE }),
+              ...(u.toVerifyNextTime !== undefined && {
+                toVerifyNextTime: u.toVerifyNextTime,
+              }),
+              lastVerifiedAt: now,
+            },
+          },
+        },
+      })),
+      { ordered: false },
     );
   }
 }

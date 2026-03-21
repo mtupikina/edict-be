@@ -1,17 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type UserDocument = User & Document;
 
 const READ_ONLY_MESSAGE =
   'User collection is read-only in this application; updates are not allowed.';
-
-export enum UserRole {
-  STUDENT = 'student',
-  TEACHER = 'teacher',
-  ADMIN = 'admin',
-  SUPER_ADMIN = 'super_admin',
-}
 
 @Schema({ timestamps: true, collection: 'users' })
 export class User {
@@ -24,8 +17,12 @@ export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true, enum: UserRole })
-  role: UserRole;
+  @Prop({
+    type: [MongooseSchema.Types.ObjectId],
+    ref: 'Role',
+    required: true,
+  })
+  roleIds: Types.ObjectId[];
 
   @Prop({ default: Date.now })
   createdAt: Date;
