@@ -4,6 +4,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 
 import { WordsService } from './words.service';
+import { Quiz } from './schemas/quiz.schema';
 import { Word } from './schemas/word.schema';
 import { WordVerifyUpdateDto } from './dto/submit-verify-quiz.dto';
 
@@ -67,6 +68,10 @@ describe('WordsService', () => {
     }),
   });
 
+  const mockQuizModel = {
+    create: jest.fn().mockResolvedValue({}),
+  };
+
   const mockWordModel = {
     find: jest.fn().mockImplementation((query: Record<string, unknown>) => {
       if (query?.toVerifyNextTime === true) {
@@ -117,8 +122,8 @@ describe('WordsService', () => {
     }),
     bulkWrite: jest.fn().mockResolvedValue({
       insertedCount: 0,
-      matchedCount: 0,
-      modifiedCount: 0,
+      matchedCount: 1,
+      modifiedCount: 1,
       deletedCount: 0,
       upsertedCount: 0,
       upsertedIds: {},
@@ -134,6 +139,10 @@ describe('WordsService', () => {
         {
           provide: getModelToken(Word.name),
           useValue: mockWordModel,
+        },
+        {
+          provide: getModelToken(Quiz.name),
+          useValue: mockQuizModel,
         },
       ],
     }).compile();
@@ -671,6 +680,8 @@ describe('WordsService', () => {
       const updates: WordVerifyUpdateDto[] = [
         {
           wordId: String(mockWord._id),
+          word: mockWord.word,
+          translation: mockWord.translation,
           canEToU: true,
           canUToE: false,
           toVerifyNextTime: true,
@@ -696,11 +707,185 @@ describe('WordsService', () => {
         toVerifyNextTime: true,
       });
       expect(ops[0].updateOne.update.$set.lastVerifiedAt).toBeInstanceOf(Date);
+      expect(mockQuizModel.create).toHaveBeenCalledTimes(1);
+      type CreatedQuizArg = {
+        studentId: Types.ObjectId;
+        tutorId?: Types.ObjectId;
+        entries: Array<{
+          wordId: Types.ObjectId;
+          word: string;
+          translation?: string;
+          canSpell?: boolean;
+          canEToU: boolean;
+          canUToE: boolean;
+          toVerifyNextTime: boolean;
+        }>;
+      };
+      const createCallArgs = mockQuizModel.create.mock.calls[0] as unknown as [
+        CreatedQuizArg,
+      ];
+      const quizDoc = createCallArgs[0];
+      expect(quizDoc.studentId.equals(studentId)).toBe(true);
+      expect(quizDoc.tutorId).toBeUndefined();
+      expect(quizDoc.entries).toEqual([
+        {
+          wordId: mockWord._id,
+          word: mockWord.word,
+          translation: mockWord.translation,
+          canEToU: true,
+          canUToE: false,
+          toVerifyNextTime: true,
+        },
+      ]);
+    });
+
+    it('should set canSpell on words and quiz entry when provided', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+          translation: mockWord.translation,
+          canSpell: true,
+          canEToU: false,
+          canUToE: true,
+          toVerifyNextTime: false,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates);
+      type VerifyQuizBulkOp = {
+        updateOne: { update: { $set: Record<string, unknown> } };
+      };
+      const [ops] = mockWordModel.bulkWrite.mock.calls[0] as unknown as [
+        VerifyQuizBulkOp[],
+        { ordered: boolean },
+      ];
+      expect(ops[0].updateOne.update.$set).toMatchObject({
+        canSpell: true,
+        canEToU: false,
+        canUToE: true,
+        toVerifyNextTime: false,
+      });
+      expect(mockQuizModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entries: [
+            expect.objectContaining({
+              word: mockWord.word,
+              translation: mockWord.translation,
+              canSpell: true,
+              canEToU: false,
+              canUToE: true,
+              toVerifyNextTime: false,
+            }),
+          ],
+        }),
+      );
+    });
+
+    it('should persist canSpell false on quiz entry when explicitly submitted', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+          translation: mockWord.translation,
+          canSpell: false,
+          canEToU: true,
+          canUToE: true,
+          toVerifyNextTime: false,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates);
+      const createCallArgs = mockQuizModel.create.mock.calls[0] as unknown as [
+        {
+          entries: Array<{ canSpell?: boolean }>;
+        },
+      ];
+      expect(createCallArgs[0].entries[0].canSpell).toBe(false);
+    });
+
+    it('should persist tutorId when tutor submits for a student', async () => {
+      const tutorId = new Types.ObjectId('507f1f77bcf86cd7994390aa');
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+          translation: mockWord.translation,
+          canEToU: true,
+          canUToE: true,
+          toVerifyNextTime: false,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates, tutorId);
+      type CreatedQuizArg = {
+        studentId: Types.ObjectId;
+        tutorId?: Types.ObjectId;
+        entries: unknown[];
+      };
+      const [doc] = mockQuizModel.create.mock.calls[0] as unknown as [
+        CreatedQuizArg,
+      ];
+      expect(doc.tutorId?.equals(tutorId)).toBe(true);
+      expect(doc.studentId.equals(studentId)).toBe(true);
     });
 
     it('should skip bulkWrite when updates array is empty', async () => {
       await service.submitVerifyQuiz(studentId, []);
       expect(mockWordModel.bulkWrite).not.toHaveBeenCalled();
+    });
+
+    it('should omit translation in quiz entry when absent or empty', async () => {
+      type QuizCreatePayload = { entries: Array<{ translation?: string }> };
+      const base = {
+        wordId: String(mockWord._id),
+        word: mockWord.word,
+        canEToU: true,
+        canUToE: false,
+        toVerifyNextTime: true,
+      };
+      await service.submitVerifyQuiz(studentId, [base]);
+      const firstCall = mockQuizModel.create.mock.calls[0] as unknown as [
+        QuizCreatePayload,
+      ];
+      expect(firstCall[0].entries[0].translation).toBeUndefined();
+
+      mockQuizModel.create.mockClear();
+      await service.submitVerifyQuiz(studentId, [{ ...base, translation: '' }]);
+      const secondCall = mockQuizModel.create.mock.calls[0] as unknown as [
+        QuizCreatePayload,
+      ];
+      expect(secondCall[0].entries[0].translation).toBeUndefined();
+    });
+
+    it('should omit optional flags in bulk $set when not provided', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates);
+      type VerifyQuizBulkOp = {
+        updateOne: { update: { $set: Record<string, unknown> } };
+      };
+      const [ops] = mockWordModel.bulkWrite.mock.calls[0] as unknown as [
+        VerifyQuizBulkOp[],
+        { ordered: boolean },
+      ];
+      expect(ops[0].updateOne.update.$set).toEqual({
+        lastVerifiedAt: expect.any(Date) as unknown as Date,
+      });
+      expect(mockQuizModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entries: [
+            {
+              wordId: mockWord._id,
+              word: mockWord.word,
+              canEToU: false,
+              canUToE: false,
+              toVerifyNextTime: false,
+            },
+          ],
+        }),
+      );
     });
   });
 });

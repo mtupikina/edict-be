@@ -9,6 +9,7 @@ import { Types } from 'mongoose';
 
 import { CreateWordDto } from './dto/create-word.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
+import { Quiz, QuizDocument } from './schemas/quiz.schema';
 import { Word, WordDocument } from './schemas/word.schema';
 import { WordVerifyUpdateDto } from './dto/submit-verify-quiz.dto';
 
@@ -62,6 +63,7 @@ export interface WordsServiceContract {
   submitVerifyQuiz(
     effectiveStudentId: Types.ObjectId,
     updates: WordVerifyUpdateDto[],
+    tutorId?: Types.ObjectId,
   ): Promise<void>;
   findAll(
     effectiveStudentId: Types.ObjectId,
@@ -102,6 +104,8 @@ export class WordsService {
   constructor(
     @InjectModel(Word.name)
     private readonly wordModel: Model<WordDocument>,
+    @InjectModel(Quiz.name)
+    private readonly quizModel: Model<QuizDocument>,
   ) {}
 
   async findAll(
@@ -410,11 +414,25 @@ export class WordsService {
   async submitVerifyQuiz(
     effectiveStudentId: Types.ObjectId,
     updates: WordVerifyUpdateDto[],
+    tutorId?: Types.ObjectId,
   ): Promise<void> {
     if (updates.length === 0) {
       return;
     }
     const now = new Date();
+
+    const entries = updates.map((u) => ({
+      wordId: new Types.ObjectId(u.wordId),
+      word: u.word,
+      ...(u.translation !== undefined && u.translation !== ''
+        ? { translation: u.translation }
+        : {}),
+      ...(u.canSpell !== undefined ? { canSpell: u.canSpell } : {}),
+      canEToU: u.canEToU ?? false,
+      canUToE: u.canUToE ?? false,
+      toVerifyNextTime: u.toVerifyNextTime ?? false,
+    }));
+
     await this.wordModel.bulkWrite(
       updates.map((u) => ({
         updateOne: {
@@ -424,6 +442,7 @@ export class WordsService {
           },
           update: {
             $set: {
+              ...(u.canSpell !== undefined && { canSpell: u.canSpell }),
               ...(u.canEToU !== undefined && { canEToU: u.canEToU }),
               ...(u.canUToE !== undefined && { canUToE: u.canUToE }),
               ...(u.toVerifyNextTime !== undefined && {
@@ -436,5 +455,11 @@ export class WordsService {
       })),
       { ordered: false },
     );
+
+    await this.quizModel.create({
+      studentId: effectiveStudentId,
+      entries,
+      ...(tutorId ? { tutorId } : {}),
+    });
   }
 }

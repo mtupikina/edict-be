@@ -411,6 +411,8 @@ describe('WordsController', () => {
         updates: [
           {
             wordId: '2',
+            word: 'world',
+            translation: 'світ',
             canEToU: true,
             canUToE: false,
             toVerifyNextTime: true,
@@ -421,6 +423,7 @@ describe('WordsController', () => {
       expect(mockWordsService.submitVerifyQuiz).toHaveBeenCalledWith(
         studentOid,
         dto.updates,
+        undefined,
       );
     });
 
@@ -432,6 +435,25 @@ describe('WordsController', () => {
       await expect(
         controller.submitVerifyQuiz(jwtUser, { updates: [] }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should pass tutorId when access is for a tutee', async () => {
+      const tuteeOid = new Types.ObjectId('507f1f77bcf86cd7994390bb');
+      const tutorPrincipalOid = new Types.ObjectId('507f1f77bcf86cd7994390cc');
+      mockWordsAccess.resolveAccess.mockResolvedValueOnce({
+        effectiveStudentId: tuteeOid,
+        isSelfReadOnly: false,
+        tutorId: tutorPrincipalOid,
+      });
+      const dto = {
+        updates: [{ wordId: '2', word: 'w', canEToU: true }],
+      };
+      await controller.submitVerifyQuiz(jwtUser, dto);
+      expect(mockWordsService.submitVerifyQuiz).toHaveBeenCalledWith(
+        tuteeOid,
+        dto.updates,
+        tutorPrincipalOid,
+      );
     });
   });
 });

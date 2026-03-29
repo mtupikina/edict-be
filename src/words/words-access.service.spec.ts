@@ -47,6 +47,7 @@ describe('WordsAccessService', () => {
     const result = await service.resolveAccess('s@x.com');
     expect(result.effectiveStudentId.equals(selfId)).toBe(true);
     expect(result.isSelfReadOnly).toBe(true);
+    expect(result.tutorId).toBeUndefined();
   });
 
   it('should resolve self read-only when tutor-eligible with no tutees and no studentId', async () => {
@@ -106,6 +107,7 @@ describe('WordsAccessService', () => {
     const result = await service.resolveAccess('t@x.com', tuteeId.toString());
     expect(result.effectiveStudentId.equals(tuteeId)).toBe(true);
     expect(result.isSelfReadOnly).toBe(false);
+    expect(result.tutorId?.equals(selfId)).toBe(true);
   });
 
   it('should reject when tutee id is not in list', async () => {
@@ -150,6 +152,7 @@ describe('WordsAccessService', () => {
     const result = await service.resolveAccess('t@x.com', tuteeId.toString());
     expect(result.effectiveStudentId.equals(tuteeId)).toBe(true);
     expect(result.isSelfReadOnly).toBe(true);
+    expect(result.tutorId?.equals(selfId)).toBe(true);
   });
 
   it('should allow self read for non-student role when words:read is granted', async () => {
@@ -281,6 +284,39 @@ describe('WordsAccessService', () => {
     );
     mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
     const result = await service.resolveAccess('t@x.com', selfId.toString());
+    expect(result.effectiveStudentId.equals(selfId)).toBe(true);
+    expect(result.isSelfReadOnly).toBe(true);
+  });
+
+  it('should resolve self as not read-only when principal is not tutor-eligible and has write', async () => {
+    mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+      _id: selfId,
+      email: 'author@x.com',
+      roleIds: [{ name: 'author' }],
+    });
+    mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+      permissionSet(Permissions.WORDS_READ, Permissions.WORDS_WRITE),
+    );
+    mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+    const result = await service.resolveAccess(
+      'author@x.com',
+      selfId.toString(),
+    );
+    expect(result.effectiveStudentId.equals(selfId)).toBe(true);
+    expect(result.isSelfReadOnly).toBe(false);
+  });
+
+  it('should drop unpopulated role ObjectIds when extracting role names', async () => {
+    mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+      _id: selfId,
+      email: 'mixed@x.com',
+      roleIds: [{ name: 'student' }, new Types.ObjectId()],
+    });
+    mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+      permissionSet(Permissions.WORDS_READ),
+    );
+    mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+    const result = await service.resolveAccess('mixed@x.com');
     expect(result.effectiveStudentId.equals(selfId)).toBe(true);
     expect(result.isSelfReadOnly).toBe(true);
   });

@@ -86,7 +86,7 @@ describe('AuthService', () => {
     });
 
     it('should return null when profile email entry has no value', async () => {
-      const profile = { emails: [{}], id: 'google-789' };
+      const profile = { emails: [{} as { value: string }], id: 'google-789' };
       const result = await service.validateGoogleUser(profile);
       expect(result).toBeNull();
     });

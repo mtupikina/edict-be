@@ -20,6 +20,7 @@ import { GenerateVerifyQuizDto } from './dto/generate-verify-quiz.dto';
 import { SubmitVerifyQuizDto } from './dto/submit-verify-quiz.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Word } from './schemas/word.schema';
+import type { WordsAccessContext } from './words-access-context';
 import { WordsAccessService } from './words-access.service';
 import {
   QuizWord,
@@ -67,13 +68,17 @@ export class WordsController {
     @Body() dto: SubmitVerifyQuizDto,
     @Query('studentId') studentId?: string,
   ): Promise<void> {
-    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    const access: WordsAccessContext = await this.wordsAccess.resolveAccess(
+      user.email,
+      studentId,
+    );
     if (access.isSelfReadOnly) {
       throw new ForbiddenException('Read-only access');
     }
     await this.wordsService.submitVerifyQuiz(
       access.effectiveStudentId,
       dto.updates,
+      access.tutorId,
     );
   }
 

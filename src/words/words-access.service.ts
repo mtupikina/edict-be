@@ -9,14 +9,9 @@ import { Permissions } from '../users/constants/permissions.constants';
 import { roleNamesIncludeTutorEligible } from '../users/constants/roles.constants';
 import { UsersService } from '../users/users.service';
 
-export interface WordsAccessContext {
-  effectiveStudentId: Types.ObjectId;
-  /**
-   * Tutor/admin principals are always read-only on their own vocabulary (`words:write` applies to tutees only).
-   * Non–tutor-eligible users: read-only when `words:write` is missing.
-   */
-  isSelfReadOnly: boolean;
-}
+import type { WordsAccessContext } from './words-access-context';
+
+export type { WordsAccessContext } from './words-access-context';
 
 @Injectable()
 export class WordsAccessService {
@@ -80,6 +75,7 @@ export class WordsAccessService {
     return {
       effectiveStudentId: sid,
       isSelfReadOnly: !hasWordsWrite,
+      tutorId: selfId,
     };
   }
 
