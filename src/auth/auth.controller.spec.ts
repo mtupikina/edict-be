@@ -14,10 +14,16 @@ describe('AuthController', () => {
   };
 
   const mockUsersService = {
-    findOneByEmail: jest.fn().mockResolvedValue({
+    getAuthSession: jest.fn().mockResolvedValue({
+      userId: '507f1f77bcf86cd799439011',
       email: 'user@example.com',
       firstName: 'John',
       lastName: 'Doe',
+      roleNames: ['student'],
+      showTutorMode: false,
+      showStudentMode: true,
+      defaultMode: 'student',
+      students: [],
     }),
   };
 
@@ -99,28 +105,36 @@ describe('AuthController', () => {
     });
   });
 
-  describe('getProfile', () => {
-    it('should return email, firstName, lastName', async () => {
+  describe('getMe', () => {
+    it('should return session from users service', async () => {
       const user = { email: 'user@example.com', sub: 'sub-1' };
-      const result = await controller.getProfile(user);
-      expect(mockUsersService.findOneByEmail).toHaveBeenCalledWith(
+      const result = await controller.getMe(user);
+      expect(mockUsersService.getAuthSession).toHaveBeenCalledWith(
         'user@example.com',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
+        userId: '507f1f77bcf86cd799439011',
         email: 'user@example.com',
         firstName: 'John',
         lastName: 'Doe',
+        showStudentMode: true,
       });
     });
 
-    it('should return email and null names when user not found', async () => {
-      mockUsersService.findOneByEmail.mockResolvedValueOnce(null);
+    it('should return empty session when user not in DB', async () => {
+      mockUsersService.getAuthSession.mockResolvedValueOnce(null);
       const user = { email: 'unknown@example.com', sub: 'sub-1' };
-      const result = await controller.getProfile(user);
+      const result = await controller.getMe(user);
       expect(result).toEqual({
+        userId: null,
         email: 'unknown@example.com',
         firstName: null,
         lastName: null,
+        roleNames: [],
+        showTutorMode: false,
+        showStudentMode: false,
+        defaultMode: 'student',
+        students: [],
       });
     });
   });

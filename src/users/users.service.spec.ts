@@ -3,8 +3,12 @@ import { getModelToken } from '@nestjs/mongoose';
 
 import { Types } from 'mongoose';
 
-import { UsersService } from './users.service';
+import { Permissions } from './constants/permissions.constants';
+import { Permission } from './schemas/permission.schema';
+import { ROLES } from './constants/roles.constants';
+import { RolePermission } from './schemas/role-permission.schema';
 import { User } from './schemas/user.schema';
+import { UsersService, type UserWithRoleNames } from './users.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -22,11 +26,17 @@ describe('UsersService', () => {
   const chain = (execResult: unknown) => ({
     exec: jest.fn().mockResolvedValue(execResult),
   });
-  const leanChain = (execResult: unknown) => ({
-    lean: jest.fn().mockReturnValue(chain(execResult)),
-  });
   const mockUserModel = {
     findOne: jest.fn().mockImplementation(() => chain(null)),
+  };
+
+  const mockRolePermissionExec = jest.fn().mockResolvedValue([]);
+  const mockRolePermissionModel = {
+    find: jest.fn().mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: mockRolePermissionExec,
+    }),
   };
 
   beforeEach(async () => {
@@ -37,11 +47,20 @@ describe('UsersService', () => {
           provide: getModelToken(User.name),
           useValue: mockUserModel,
         },
+        {
+          provide: getModelToken(Permission.name),
+          useValue: {},
+        },
+        {
+          provide: getModelToken(RolePermission.name),
+          useValue: mockRolePermissionModel,
+        },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
     jest.clearAllMocks();
+    mockRolePermissionExec.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -70,20 +89,52 @@ describe('UsersService', () => {
     });
   });
 
-  describe('findOneByEmail', () => {
-    it('should return user when found', async () => {
-      mockUserModel.findOne.mockReturnValueOnce(leanChain(mockUser));
-      const result = await service.findOneByEmail('john@example.com');
-      expect(result).toEqual(mockUser);
-      expect(mockUserModel.findOne).toHaveBeenCalledWith({
-        email: 'john@example.com',
+  describe('getPermissionNamesForUser', () => {
+    it('resolves super_admin from role_permissions like admin', async () => {
+      const superAdminRoleId = new Types.ObjectId('507f1f77bcf86cd7994390aa');
+      mockRolePermissionExec.mockResolvedValue([
+        { permissionId: { name: Permissions.WORDS_READ } },
+        { permissionId: { name: Permissions.PERMISSIONS_READ } },
+      ]);
+      const user: UserWithRoleNames = {
+        ...mockUser,
+        roleIds: [{ _id: superAdminRoleId, name: ROLES.SUPER_ADMIN }],
+      } as UserWithRoleNames;
+      const result = await service.getPermissionNamesForUser(user);
+      expect(mockRolePermissionModel.find).toHaveBeenCalledWith({
+        roleId: { $in: [superAdminRoleId] },
       });
+      expect(result.size).toBe(2);
+      expect(result.has(Permissions.WORDS_READ)).toBe(true);
+      expect(result.has(Permissions.PERMISSIONS_READ)).toBe(true);
     });
 
-    it('should return null when user not found', async () => {
-      mockUserModel.findOne.mockReturnValueOnce(leanChain(null));
-      const result = await service.findOneByEmail('unknown@example.com');
-      expect(result).toBeNull();
+    it('returns names from role_permissions when links exist', async () => {
+      mockRolePermissionExec.mockResolvedValue([
+        { permissionId: { name: Permissions.WORDS_READ } },
+        { permissionId: { name: Permissions.WORDS_WRITE } },
+      ]);
+      const roleId = new Types.ObjectId('507f1f77bcf86cd799439099');
+      const user: UserWithRoleNames = {
+        ...mockUser,
+        roleIds: [{ _id: roleId, name: 'tutor' }],
+      } as UserWithRoleNames;
+      const result = await service.getPermissionNamesForUser(user);
+      expect(mockRolePermissionModel.find).toHaveBeenCalledWith({
+        roleId: { $in: [roleId] },
+      });
+      expect(result.has(Permissions.WORDS_READ)).toBe(true);
+      expect(result.has(Permissions.WORDS_WRITE)).toBe(true);
+    });
+
+    it('returns empty when role_permission has no rows', async () => {
+      mockRolePermissionExec.mockResolvedValue([]);
+      const user: UserWithRoleNames = {
+        ...mockUser,
+        roleIds: [{ _id: new Types.ObjectId(), name: 'student' }],
+      } as UserWithRoleNames;
+      const result = await service.getPermissionNamesForUser(user);
+      expect(result.size).toBe(0);
     });
   });
 });

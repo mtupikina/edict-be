@@ -51,17 +51,24 @@ export class AuthController {
     return { message: 'Logged out successfully' };
   }
 
+  /** Full auth session (profile, roles, tutor/student flags, students). Single bootstrap endpoint for the app. */
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getProfile(@CurrentUser() user: JwtPayload) {
-    const dbUser = await this.usersService.findOneByEmail(user.email);
-    if (!dbUser) {
-      return { email: user.email, firstName: null, lastName: null };
+  async getMe(@CurrentUser() user: JwtPayload) {
+    const session = await this.usersService.getAuthSession(user.email);
+    if (!session) {
+      return {
+        userId: null,
+        email: user.email,
+        firstName: null,
+        lastName: null,
+        roleNames: [],
+        showTutorMode: false,
+        showStudentMode: false,
+        defaultMode: 'student' as const,
+        students: [],
+      };
     }
-    return {
-      email: dbUser.email,
-      firstName: dbUser.firstName,
-      lastName: dbUser.lastName,
-    };
+    return session;
   }
 }

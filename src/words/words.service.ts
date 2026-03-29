@@ -54,25 +54,47 @@ interface CursorPayload {
 
 /** Controller-facing contract so the controller can depend on a resolved type. */
 export interface WordsServiceContract {
-  findToVerifyList(): Promise<ToVerifyWord[]>;
-  generateVerifyQuiz(count: number): Promise<QuizWord[]>;
-  submitVerifyQuiz(updates: WordVerifyUpdateDto[]): Promise<void>;
+  findToVerifyList(effectiveStudentId: Types.ObjectId): Promise<ToVerifyWord[]>;
+  generateVerifyQuiz(
+    effectiveStudentId: Types.ObjectId,
+    count: number,
+  ): Promise<QuizWord[]>;
+  submitVerifyQuiz(
+    effectiveStudentId: Types.ObjectId,
+    updates: WordVerifyUpdateDto[],
+  ): Promise<void>;
   findAll(
+    effectiveStudentId: Types.ObjectId,
     limit?: number,
     cursor?: string,
     sortBy?: WordsSortBy,
     order?: WordsOrder,
     search?: string,
   ): Promise<WordsPage>;
-  findOne(id: string): Promise<Word>;
-  create(dto: CreateWordDto): Promise<Word>;
-  update(id: string, dto: UpdateWordDto): Promise<Word>;
-  remove(id: string): Promise<void>;
+  findOne(effectiveStudentId: Types.ObjectId, id: string): Promise<Word>;
+  create(effectiveStudentId: Types.ObjectId, dto: CreateWordDto): Promise<Word>;
+  update(
+    effectiveStudentId: Types.ObjectId,
+    id: string,
+    dto: UpdateWordDto,
+  ): Promise<Word>;
+  remove(effectiveStudentId: Types.ObjectId, id: string): Promise<void>;
 }
 
 /** Escape special regex characters so user search is treated as literal. */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function andWithStudentFilter(
+  query: Record<string, unknown>,
+  studentId: Types.ObjectId,
+): Record<string, unknown> {
+  const studentFilter = { studentId };
+  if (Object.keys(query).length === 0) {
+    return studentFilter;
+  }
+  return { $and: [studentFilter, query] };
 }
 
 @Injectable()
@@ -83,6 +105,7 @@ export class WordsService {
   ) {}
 
   async findAll(
+    effectiveStudentId: Types.ObjectId,
     limit = 20,
     cursor?: string,
     sortBy: WordsSortBy = 'createdAt',
@@ -140,7 +163,11 @@ export class WordsService {
           : searchFilter;
     }
 
-    const countQuery = searchFilter ?? {};
+    query = andWithStudentFilter(query, effectiveStudentId);
+
+    let countQuery: Record<string, unknown> = searchFilter ?? {};
+    countQuery = andWithStudentFilter(countQuery, effectiveStudentId);
+
     const [items, totalCount] = await Promise.all([
       this.wordModel
         .find(query)
@@ -181,18 +208,27 @@ export class WordsService {
     };
   }
 
-  async findOne(id: string): Promise<Word> {
-    const word = await this.wordModel.findById(id).lean().exec();
+  async findOne(effectiveStudentId: Types.ObjectId, id: string): Promise<Word> {
+    const word = await this.wordModel
+      .findOne({ _id: id, studentId: effectiveStudentId })
+      .lean()
+      .exec();
     if (!word) {
       throw new NotFoundException(`Word with id ${id} not found`);
     }
     return word as Word;
   }
 
-  async create(dto: CreateWordDto): Promise<Word> {
+  async create(
+    effectiveStudentId: Types.ObjectId,
+    dto: CreateWordDto,
+  ): Promise<Word> {
     const normalized = dto.word.trim().toLowerCase();
     const existing = await this.wordModel
-      .findOne({ word: { $regex: new RegExp(`^${normalized}$`, 'i') } })
+      .findOne({
+        word: { $regex: new RegExp(`^${normalized}$`, 'i') },
+        studentId: effectiveStudentId,
+      })
       .exec();
     if (existing) {
       throw new ConflictException(`Word "${dto.word}" already exists`);
@@ -201,12 +237,19 @@ export class WordsService {
       ...dto,
       word: dto.word.trim(),
       toVerifyNextTime: dto.toVerifyNextTime ?? true,
+      studentId: effectiveStudentId,
     });
     return created.toObject();
   }
 
-  async update(id: string, dto: UpdateWordDto): Promise<Word> {
-    const existing = await this.wordModel.findById(id).exec();
+  async update(
+    effectiveStudentId: Types.ObjectId,
+    id: string,
+    dto: UpdateWordDto,
+  ): Promise<Word> {
+    const existing = await this.wordModel
+      .findOne({ _id: id, studentId: effectiveStudentId })
+      .exec();
     if (!existing) {
       throw new NotFoundException(`Word with id ${id} not found`);
     }
@@ -215,6 +258,7 @@ export class WordsService {
       const duplicate = await this.wordModel
         .findOne({
           word: { $regex: new RegExp(`^${normalized}$`, 'i') },
+          studentId: effectiveStudentId,
           _id: { $ne: id },
         })
         .exec();
@@ -223,8 +267,8 @@ export class WordsService {
       }
     }
     const updated = await this.wordModel
-      .findByIdAndUpdate(
-        id,
+      .findOneAndUpdate(
+        { _id: id, studentId: effectiveStudentId },
         { ...dto, ...(dto.word !== undefined && { word: dto.word.trim() }) },
         { new: true },
       )
@@ -236,8 +280,10 @@ export class WordsService {
     return updated as Word;
   }
 
-  async remove(id: string): Promise<void> {
-    const result = await this.wordModel.findByIdAndDelete(id).exec();
+  async remove(effectiveStudentId: Types.ObjectId, id: string): Promise<void> {
+    const result = await this.wordModel
+      .findOneAndDelete({ _id: id, studentId: effectiveStudentId })
+      .exec();
     if (!result) {
       throw new NotFoundException(`Word with id ${id} not found`);
     }
@@ -262,9 +308,11 @@ export class WordsService {
     createdAt: 1,
   } as const;
 
-  async findToVerifyList(): Promise<ToVerifyWord[]> {
+  async findToVerifyList(
+    effectiveStudentId: Types.ObjectId,
+  ): Promise<ToVerifyWord[]> {
     const items = await this.wordModel
-      .find({ toVerifyNextTime: true })
+      .find({ toVerifyNextTime: true, studentId: effectiveStudentId })
       .select(WordsService.VERIFY_LIST_PROJECTION)
       .sort({ word: 1 })
       .lean()
@@ -284,7 +332,10 @@ export class WordsService {
     }) as ToVerifyWord[];
   }
 
-  async generateVerifyQuiz(count: number): Promise<QuizWord[]> {
+  async generateVerifyQuiz(
+    effectiveStudentId: Types.ObjectId,
+    count: number,
+  ): Promise<QuizWord[]> {
     const now = new Date();
     const hundredDaysAgo = new Date(now);
     hundredDaysAgo.setDate(hundredDaysAgo.getDate() - 100);
@@ -300,10 +351,13 @@ export class WordsService {
       _id: 1 as const,
     };
 
+    const studentScope = { studentId: effectiveStudentId };
+
     const [bucket1, bucket2, bucket3] = await Promise.all([
       n1 > 0
         ? this.wordModel
             .find({
+              ...studentScope,
               createdAt: { $gte: hundredDaysAgo },
             })
             .select(WordsService.QUIZ_WORD_PROJECTION)
@@ -315,6 +369,7 @@ export class WordsService {
       n2 > 0
         ? this.wordModel
             .find({
+              ...studentScope,
               createdAt: { $lt: hundredDaysAgo, $gte: oneYearAgo },
             })
             .select(WordsService.QUIZ_WORD_PROJECTION)
@@ -326,6 +381,7 @@ export class WordsService {
       n3 > 0
         ? this.wordModel
             .find({
+              ...studentScope,
               createdAt: { $lt: oneYearAgo },
             })
             .select(WordsService.QUIZ_WORD_PROJECTION)
@@ -351,7 +407,10 @@ export class WordsService {
     }) as QuizWord[];
   }
 
-  async submitVerifyQuiz(updates: WordVerifyUpdateDto[]): Promise<void> {
+  async submitVerifyQuiz(
+    effectiveStudentId: Types.ObjectId,
+    updates: WordVerifyUpdateDto[],
+  ): Promise<void> {
     if (updates.length === 0) {
       return;
     }
@@ -359,7 +418,10 @@ export class WordsService {
     await this.wordModel.bulkWrite(
       updates.map((u) => ({
         updateOne: {
-          filter: { _id: new Types.ObjectId(u.wordId) },
+          filter: {
+            _id: new Types.ObjectId(u.wordId),
+            studentId: effectiveStudentId,
+          },
           update: {
             $set: {
               ...(u.canEToU !== undefined && { canEToU: u.canEToU }),

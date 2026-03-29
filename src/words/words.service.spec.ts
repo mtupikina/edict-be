@@ -10,6 +10,8 @@ import { WordVerifyUpdateDto } from './dto/submit-verify-quiz.dto';
 describe('WordsService', () => {
   let service: WordsService;
 
+  const studentId = new Types.ObjectId('507f1f77bcf86cd799439099');
+
   const mockWord = {
     _id: new Types.ObjectId(),
     word: 'hello',
@@ -101,11 +103,17 @@ describe('WordsService', () => {
     }),
     countDocuments: jest.fn().mockReturnValue(countExecChain(1)),
     findById: jest.fn().mockReturnValue(findByIdChain(mockWord, mockWord)),
-    findOne: jest.fn().mockReturnValue(execChain(null)),
+    findOne: jest.fn().mockReturnValue({
+      exec: jest.fn().mockResolvedValue(mockWord),
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockWord),
+      }),
+    }),
     create: jest.fn().mockResolvedValue({ toObject: () => mockWord }),
-    findByIdAndUpdate: jest.fn().mockReturnValue({
-      ...leanChain(mockWord),
-      exec: jest.fn().mockResolvedValue(undefined),
+    findOneAndUpdate: jest.fn().mockReturnValue({
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockWord),
+      }),
     }),
     bulkWrite: jest.fn().mockResolvedValue({
       insertedCount: 0,
@@ -116,7 +124,7 @@ describe('WordsService', () => {
       upsertedIds: {},
       insertedIds: {},
     }),
-    findByIdAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
+    findOneAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
   };
 
   beforeEach(async () => {
@@ -140,7 +148,7 @@ describe('WordsService', () => {
 
   describe('findAll', () => {
     it('should return page of words with nextCursor and hasMore', async () => {
-      const result = await service.findAll(2);
+      const result = await service.findAll(studentId, 2);
       expect(result.items).toHaveLength(1);
       expect(result.hasMore).toBe(false);
       expect(result.nextCursor).toBeNull();
@@ -163,7 +171,13 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain(three)),
         }),
       });
-      const result = await service.findAll(2, undefined, 'createdAt', 'desc');
+      const result = await service.findAll(
+        studentId,
+        2,
+        undefined,
+        'createdAt',
+        'desc',
+      );
       expect(result.items).toHaveLength(2);
       expect(result.hasMore).toBe(true);
       expect(result.nextCursor).not.toBeNull();
@@ -183,6 +197,7 @@ describe('WordsService', () => {
         }),
       });
       const result = await service.findAll(
+        studentId,
         2,
         cursorPayload,
         'createdAt',
@@ -199,12 +214,15 @@ describe('WordsService', () => {
         }),
       });
       const result = await service.findAll(
+        studentId,
         2,
         'not-valid-base64!!',
         'createdAt',
         'desc',
       );
-      expect(mockWordModel.find).toHaveBeenCalledWith({});
+      expect(mockWordModel.find).toHaveBeenCalledWith({
+        studentId,
+      });
       expect(result.items).toHaveLength(1);
     });
 
@@ -216,7 +234,13 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain(three)),
         }),
       });
-      const result = await service.findAll(2, undefined, 'word', 'desc');
+      const result = await service.findAll(
+        studentId,
+        2,
+        undefined,
+        'word',
+        'desc',
+      );
       expect(result.hasMore).toBe(true);
       expect(result.nextCursor).not.toBeNull();
     });
@@ -229,7 +253,13 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain(three)),
         }),
       });
-      const result = await service.findAll(2, undefined, 'translation', 'asc');
+      const result = await service.findAll(
+        studentId,
+        2,
+        undefined,
+        'translation',
+        'asc',
+      );
       expect(result.hasMore).toBe(true);
       expect(result.nextCursor).not.toBeNull();
     });
@@ -250,7 +280,13 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain(three)),
         }),
       });
-      const result = await service.findAll(2, undefined, 'translation', 'desc');
+      const result = await service.findAll(
+        studentId,
+        2,
+        undefined,
+        'translation',
+        'desc',
+      );
       expect(result.hasMore).toBe(true);
       expect(result.nextCursor).not.toBeNull();
     });
@@ -268,10 +304,17 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(2, cursorPayload, 'createdAt', 'asc');
+      await service.findAll(studentId, 2, cursorPayload, 'createdAt', 'asc');
       expect(mockWordModel.find).toHaveBeenCalledWith(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        expect.objectContaining({ $or: expect.any(Array) }),
+        expect.objectContaining({
+          $and: [
+            { studentId },
+            expect.objectContaining({
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              $or: expect.any(Array),
+            }),
+          ],
+        }),
       );
     });
 
@@ -285,13 +328,18 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(2, cursorPayload, 'word', 'desc');
+      await service.findAll(studentId, 2, cursorPayload, 'word', 'desc');
       expect(mockWordModel.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          $or: expect.arrayContaining([
-            expect.objectContaining({ word: { $lt: 'hello' } }),
-          ]),
+          $and: [
+            { studentId },
+            expect.objectContaining({
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              $or: expect.arrayContaining([
+                expect.objectContaining({ word: { $lt: 'hello' } }),
+              ]),
+            }),
+          ],
         }),
       );
     });
@@ -307,12 +355,15 @@ describe('WordsService', () => {
         }),
       });
       const result = await service.findAll(
+        studentId,
         2,
         cursorPayload,
         'createdAt',
         'desc',
       );
-      expect(mockWordModel.find).toHaveBeenCalledWith({});
+      expect(mockWordModel.find).toHaveBeenCalledWith({
+        studentId,
+      });
       expect(result.items).toHaveLength(1);
     });
 
@@ -322,12 +373,22 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(20, undefined, 'createdAt', 'desc', 'hello');
+      await service.findAll(
+        studentId,
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        'hello',
+      );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const query = mockWordModel.find.mock.calls[0][0] as { word: RegExp };
-      expect(query.word).toBeInstanceOf(RegExp);
-      expect(query.word.source).toBe('hello');
-      expect(query.word.flags).toContain('i');
+      const query = mockWordModel.find.mock.calls[0][0] as {
+        $and: [{ studentId: Types.ObjectId }, { word: RegExp }];
+      };
+      expect(query.$and[0]).toEqual({ studentId });
+      expect(query.$and[1].word).toBeInstanceOf(RegExp);
+      expect(query.$and[1].word.source).toBe('hello');
+      expect(query.$and[1].word.flags).toContain('i');
     });
 
     it('should not add search filter when search is empty string', async () => {
@@ -336,8 +397,10 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(20, undefined, 'createdAt', 'desc', '');
-      expect(mockWordModel.find).toHaveBeenCalledWith({});
+      await service.findAll(studentId, 20, undefined, 'createdAt', 'desc', '');
+      expect(mockWordModel.find).toHaveBeenCalledWith({
+        studentId,
+      });
     });
 
     it('should combine search filter with cursor query when both provided', async () => {
@@ -353,17 +416,28 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(2, cursorPayload, 'createdAt', 'desc', 'foo');
+      await service.findAll(
+        studentId,
+        2,
+        cursorPayload,
+        'createdAt',
+        'desc',
+        'foo',
+      );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const query = mockWordModel.find.mock.calls[0][0] as {
-        $and: [{ word: RegExp }, unknown];
+        $and: [
+          { studentId: Types.ObjectId },
+          { $and: [{ word: RegExp }, unknown] },
+        ];
       };
       expect(query.$and).toHaveLength(2);
-      expect(query.$and[0].word).toBeInstanceOf(RegExp);
-      expect(query.$and[0].word.source).toBe('foo');
-      expect(query.$and[0].word.flags).toContain('i');
-
-      expect(query.$and[1]).toEqual(
+      expect(query.$and[0]).toEqual({ studentId });
+      const inner = query.$and[1].$and;
+      expect(inner[0].word).toBeInstanceOf(RegExp);
+      expect(inner[0].word.source).toBe('foo');
+      expect(inner[0].word.flags).toContain('i');
+      expect(inner[1]).toEqual(
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           $or: expect.any(Array),
@@ -377,122 +451,156 @@ describe('WordsService', () => {
           limit: jest.fn().mockReturnValue(leanChain([mockWord])),
         }),
       });
-      await service.findAll(20, undefined, 'createdAt', 'desc', 'a+b');
+      await service.findAll(
+        studentId,
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        'a+b',
+      );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const query = mockWordModel.find.mock.calls[0][0] as { word: RegExp };
-      expect(query.word).toBeInstanceOf(RegExp);
-      expect(query.word.source).toBe('a\\+b');
-      expect(query.word.flags).toContain('i');
+      const query = mockWordModel.find.mock.calls[0][0] as {
+        $and: [{ studentId: Types.ObjectId }, { word: RegExp }];
+      };
+      expect(query.$and[0]).toEqual({ studentId });
+      expect(query.$and[1].word).toBeInstanceOf(RegExp);
+      expect(query.$and[1].word.source).toBe('a\\+b');
+      expect(query.$and[1].word.flags).toContain('i');
     });
   });
 
   describe('findOne', () => {
     it('should return word by id', async () => {
-      const result = await service.findOne(String(mockWord._id));
+      const result = await service.findOne(studentId, String(mockWord._id));
       expect(result).toEqual(mockWord);
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockWordModel.findById.mockReturnValueOnce(findByIdChain(null, null));
-      await expect(service.findOne('507f1f77bcf86cd799439011')).rejects.toThrow(
-        NotFoundException,
-      );
+      mockWordModel.findOne.mockReturnValueOnce({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        }),
+      });
+      await expect(
+        service.findOne(studentId, '507f1f77bcf86cd799439011'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('create', () => {
     it('should create a word', async () => {
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(null),
+      });
       const dto = { word: 'test', translation: 'тест' };
-      const result = await service.create(dto);
+      const result = await service.create(studentId, dto);
       expect(result).toEqual(mockWord);
       expect(mockWordModel.create).toHaveBeenCalled();
     });
 
     it('should set toVerifyNextTime to true when not provided (new words go to verify list)', async () => {
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(null),
+      });
       const dto = { word: 'newword' };
-      await service.create(dto);
+      await service.create(studentId, dto);
       expect(mockWordModel.create).toHaveBeenCalledWith(
         expect.objectContaining({
           word: 'newword',
           toVerifyNextTime: true,
+          studentId,
         }),
       );
     });
 
     it('should respect toVerifyNextTime when provided in dto', async () => {
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(null),
+      });
       const dto = { word: 'other', toVerifyNextTime: false };
-      await service.create(dto);
+      await service.create(studentId, dto);
       expect(mockWordModel.create).toHaveBeenCalledWith(
         expect.objectContaining({
           word: 'other',
           toVerifyNextTime: false,
+          studentId,
         }),
       );
     });
 
     it('should throw ConflictException when word already exists', async () => {
       mockWordModel.findOne.mockReturnValueOnce(execChain({ word: 'hello' }));
-      await expect(service.create({ word: 'hello' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.create(studentId, { word: 'hello' }),
+      ).rejects.toThrow(ConflictException);
       expect(mockWordModel.create).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
     it('should update a word', async () => {
-      const result = await service.update(String(mockWord._id), {
+      const result = await service.update(studentId, String(mockWord._id), {
         translation: 'updated',
       });
       expect(result).toEqual(mockWord);
-      expect(mockWordModel.findByIdAndUpdate).toHaveBeenCalled();
+      expect(mockWordModel.findOneAndUpdate).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockWordModel.findById.mockReturnValueOnce(findByIdChain(null, null));
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(null),
+      });
       await expect(
-        service.update('507f1f77bcf86cd799439011', { translation: 'x' }),
+        service.update(studentId, '507f1f77bcf86cd799439011', {
+          translation: 'x',
+        }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ConflictException when updated word duplicates another', async () => {
-      mockWordModel.findById.mockReturnValueOnce(
-        findByIdChain(mockWord, mockWord),
-      );
-      mockWordModel.findOne.mockReturnValueOnce(
-        execChain({ _id: new Types.ObjectId() }),
-      );
+      mockWordModel.findOne
+        .mockReturnValueOnce({
+          exec: jest.fn().mockResolvedValue(mockWord),
+        })
+        .mockReturnValueOnce({
+          exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+        });
       await expect(
-        service.update(String(mockWord._id), { word: 'existing' }),
+        service.update(studentId, String(mockWord._id), { word: 'existing' }),
       ).rejects.toThrow(ConflictException);
-      expect(mockWordModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(mockWordModel.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it('should throw NotFoundException when findByIdAndUpdate returns null', async () => {
-      mockWordModel.findById.mockReturnValueOnce(
-        findByIdChain(mockWord, mockWord),
-      );
-      mockWordModel.findByIdAndUpdate.mockReturnValueOnce(leanChain(null));
+    it('should throw NotFoundException when findOneAndUpdate returns null', async () => {
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(mockWord),
+      });
+      mockWordModel.findOneAndUpdate.mockReturnValueOnce(leanChain(null));
       await expect(
-        service.update(String(mockWord._id), { translation: 'updated' }),
+        service.update(studentId, String(mockWord._id), {
+          translation: 'updated',
+        }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should update word and trim when dto.word is provided and no duplicate', async () => {
       const updatedWord = { ...mockWord, word: 'trimmed' };
-      mockWordModel.findById.mockReturnValueOnce(
-        findByIdChain(mockWord, mockWord),
-      );
+      mockWordModel.findOne.mockReturnValueOnce({
+        exec: jest.fn().mockResolvedValue(mockWord),
+      });
       mockWordModel.findOne.mockReturnValueOnce(execChain(null));
-      mockWordModel.findByIdAndUpdate.mockReturnValueOnce(
-        leanChain(updatedWord),
-      );
-      const result = await service.update(String(mockWord._id), {
+      mockWordModel.findOneAndUpdate.mockReturnValueOnce({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(updatedWord),
+        }),
+      });
+      const result = await service.update(studentId, String(mockWord._id), {
         word: '  trimmed  ',
       });
       expect(result).toEqual(updatedWord);
-      expect(mockWordModel.findByIdAndUpdate).toHaveBeenCalledWith(
-        String(mockWord._id),
+      expect(mockWordModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: String(mockWord._id), studentId },
         expect.objectContaining({ word: 'trimmed' }),
         { new: true },
       );
@@ -501,25 +609,27 @@ describe('WordsService', () => {
 
   describe('remove', () => {
     it('should remove a word', async () => {
-      await service.remove(String(mockWord._id));
-      expect(mockWordModel.findByIdAndDelete).toHaveBeenCalledWith(
-        String(mockWord._id),
-      );
+      await service.remove(studentId, String(mockWord._id));
+      expect(mockWordModel.findOneAndDelete).toHaveBeenCalledWith({
+        _id: String(mockWord._id),
+        studentId,
+      });
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockWordModel.findByIdAndDelete.mockReturnValueOnce(execChain(null));
-      await expect(service.remove('507f1f77bcf86cd799439011')).rejects.toThrow(
-        NotFoundException,
-      );
+      mockWordModel.findOneAndDelete.mockReturnValueOnce(execChain(null));
+      await expect(
+        service.remove(studentId, '507f1f77bcf86cd799439011'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('findToVerifyList', () => {
     it('should return words with toVerifyNextTime true', async () => {
-      const result = await service.findToVerifyList();
+      const result = await service.findToVerifyList(studentId);
       expect(mockWordModel.find).toHaveBeenCalledWith({
         toVerifyNextTime: true,
+        studentId,
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
@@ -533,7 +643,7 @@ describe('WordsService', () => {
 
   describe('generateVerifyQuiz', () => {
     it('should return quiz words from three buckets', async () => {
-      const result = await service.generateVerifyQuiz(10);
+      const result = await service.generateVerifyQuiz(studentId, 10);
       expect(mockWordModel.find).toHaveBeenCalledTimes(3);
       expect(result.length).toBeGreaterThan(0);
       expect(result[0]).toHaveProperty('_id');
@@ -545,7 +655,7 @@ describe('WordsService', () => {
     });
 
     it('should request correct bucket sizes (25% each for first two, remainder for third)', async () => {
-      await service.generateVerifyQuiz(10);
+      await service.generateVerifyQuiz(studentId, 10);
       const findCalls = mockWordModel.find.mock.results;
       expect(findCalls.length).toBe(3);
       const limitCalls = findCalls
@@ -566,11 +676,11 @@ describe('WordsService', () => {
           toVerifyNextTime: true,
         },
       ];
-      await service.submitVerifyQuiz(updates);
+      await service.submitVerifyQuiz(studentId, updates);
       expect(mockWordModel.bulkWrite).toHaveBeenCalledTimes(1);
       type VerifyQuizBulkOp = {
         updateOne: {
-          filter: { _id: Types.ObjectId };
+          filter: { _id: Types.ObjectId; studentId: Types.ObjectId };
           update: { $set: Record<string, unknown> };
         };
       };
@@ -579,6 +689,7 @@ describe('WordsService', () => {
       const [ops, options] = firstBulkWriteCall;
       expect(options).toEqual({ ordered: false });
       expect(ops[0].updateOne.filter._id.equals(mockWord._id)).toBe(true);
+      expect(ops[0].updateOne.filter.studentId.equals(studentId)).toBe(true);
       expect(ops[0].updateOne.update.$set).toMatchObject({
         canEToU: true,
         canUToE: false,
@@ -588,7 +699,7 @@ describe('WordsService', () => {
     });
 
     it('should skip bulkWrite when updates array is empty', async () => {
-      await service.submitVerifyQuiz([]);
+      await service.submitVerifyQuiz(studentId, []);
       expect(mockWordModel.bulkWrite).not.toHaveBeenCalled();
     });
   });

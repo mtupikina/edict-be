@@ -1,10 +1,17 @@
+import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Types } from 'mongoose';
 
+import type { JwtPayload } from '../auth/auth.service';
+import { WordsAccessService } from './words-access.service';
 import { WordsController } from './words.controller';
 import { WordsPage, WordsService } from './words.service';
 
 describe('WordsController', () => {
   let controller: WordsController;
+
+  const jwtUser: JwtPayload = { email: 'u@x.com', sub: 'sub-1' };
+  const studentOid = new Types.ObjectId('507f1f77bcf86cd799439099');
 
   const toVerifyList = [
     {
@@ -45,14 +52,28 @@ describe('WordsController', () => {
     submitVerifyQuiz: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockWordsAccess = {
+    resolveAccess: jest.fn().mockResolvedValue({
+      effectiveStudentId: studentOid,
+      isSelfReadOnly: false,
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [WordsController],
-      providers: [{ provide: WordsService, useValue: mockWordsService }],
+      providers: [
+        { provide: WordsService, useValue: mockWordsService },
+        { provide: WordsAccessService, useValue: mockWordsAccess },
+      ],
     }).compile();
 
     controller = module.get<WordsController>(WordsController);
     jest.clearAllMocks();
+    mockWordsAccess.resolveAccess.mockResolvedValue({
+      effectiveStudentId: studentOid,
+      isSelfReadOnly: false,
+    });
   });
 
   it('should be defined', () => {
@@ -61,8 +82,8 @@ describe('WordsController', () => {
 
   describe('findAll', () => {
     it('should return paginated words', async () => {
-      // module.get() loses generic return type; controller returns Promise<WordsPage>
       const result = (await controller.findAll(
+        jwtUser,
         '20',
         undefined,
       )) as unknown as WordsPage;
@@ -74,6 +95,7 @@ describe('WordsController', () => {
         totalCount: 1,
       });
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         20,
         undefined,
         'createdAt',
@@ -83,8 +105,9 @@ describe('WordsController', () => {
     });
 
     it('should pass cursor to service', async () => {
-      await controller.findAll('10', 'abc123');
+      await controller.findAll(jwtUser, '10', 'abc123');
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         10,
         'abc123',
         'createdAt',
@@ -94,8 +117,9 @@ describe('WordsController', () => {
     });
 
     it('should pass undefined cursor when cursor is empty string', async () => {
-      await controller.findAll('10', '');
+      await controller.findAll(jwtUser, '10', '');
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         10,
         undefined,
         'createdAt',
@@ -105,8 +129,9 @@ describe('WordsController', () => {
     });
 
     it('should clamp limit and pass sortBy and order', async () => {
-      await controller.findAll('200', undefined, 'word', 'asc');
+      await controller.findAll(jwtUser, '200', undefined, 'word', 'asc');
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         100,
         undefined,
         'word',
@@ -116,8 +141,15 @@ describe('WordsController', () => {
     });
 
     it('should use default sortBy when invalid', async () => {
-      await controller.findAll('5', undefined, 'invalid' as 'word', 'desc');
+      await controller.findAll(
+        jwtUser,
+        '5',
+        undefined,
+        'invalid' as 'word',
+        'desc',
+      );
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         5,
         undefined,
         'createdAt',
@@ -127,8 +159,9 @@ describe('WordsController', () => {
     });
 
     it('should clamp limit to 1 when below minimum', async () => {
-      await controller.findAll('0', undefined);
+      await controller.findAll(jwtUser, '0', undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         1,
         undefined,
         'createdAt',
@@ -138,8 +171,9 @@ describe('WordsController', () => {
     });
 
     it('should use default limit 20 when limit string is empty', async () => {
-      await controller.findAll('', undefined);
+      await controller.findAll(jwtUser, '', undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         20,
         undefined,
         'createdAt',
@@ -149,8 +183,9 @@ describe('WordsController', () => {
     });
 
     it('should pass order asc when provided', async () => {
-      await controller.findAll('5', undefined, 'translation', 'asc');
+      await controller.findAll(jwtUser, '5', undefined, 'translation', 'asc');
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         5,
         undefined,
         'translation',
@@ -160,8 +195,15 @@ describe('WordsController', () => {
     });
 
     it('should use default order when invalid', async () => {
-      await controller.findAll('5', undefined, 'word', 'invalid' as 'asc');
+      await controller.findAll(
+        jwtUser,
+        '5',
+        undefined,
+        'word',
+        'invalid' as 'asc',
+      );
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         5,
         undefined,
         'word',
@@ -171,8 +213,9 @@ describe('WordsController', () => {
     });
 
     it('should use default limit 20 and createdAt when limit/sortBy omitted', async () => {
-      await controller.findAll(undefined, undefined);
+      await controller.findAll(jwtUser, undefined, undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         20,
         undefined,
         'createdAt',
@@ -182,8 +225,9 @@ describe('WordsController', () => {
     });
 
     it('should pass limit 1 when limit is 1', async () => {
-      await controller.findAll('1', undefined);
+      await controller.findAll(jwtUser, '1', undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         1,
         undefined,
         'createdAt',
@@ -193,8 +237,9 @@ describe('WordsController', () => {
     });
 
     it('should pass limit 100 when limit is 100', async () => {
-      await controller.findAll('100', undefined);
+      await controller.findAll(jwtUser, '100', undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         100,
         undefined,
         'createdAt',
@@ -205,12 +250,14 @@ describe('WordsController', () => {
 
     it('should use default sortBy when sortBy is null', async () => {
       await controller.findAll(
+        jwtUser,
         '10',
         undefined,
         null as unknown as string,
         undefined,
       );
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         10,
         undefined,
         'createdAt',
@@ -220,8 +267,9 @@ describe('WordsController', () => {
     });
 
     it('should pass sortBy createdAt when provided', async () => {
-      await controller.findAll('10', undefined, 'createdAt', 'desc');
+      await controller.findAll(jwtUser, '10', undefined, 'createdAt', 'desc');
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         10,
         undefined,
         'createdAt',
@@ -231,8 +279,9 @@ describe('WordsController', () => {
     });
 
     it('should pass parsed limit when limit string given', async () => {
-      await controller.findAll('abc', undefined);
+      await controller.findAll(jwtUser, 'abc', undefined);
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         expect.any(Number),
         undefined,
         'createdAt',
@@ -242,8 +291,16 @@ describe('WordsController', () => {
     });
 
     it('should pass search to service when provided', async () => {
-      await controller.findAll('20', undefined, 'createdAt', 'desc', 'hello');
+      await controller.findAll(
+        jwtUser,
+        '20',
+        undefined,
+        'createdAt',
+        'desc',
+        'hello',
+      );
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         20,
         undefined,
         'createdAt',
@@ -253,8 +310,16 @@ describe('WordsController', () => {
     });
 
     it('should pass undefined search when search is empty or whitespace', async () => {
-      await controller.findAll('20', undefined, undefined, undefined, '   ');
+      await controller.findAll(
+        jwtUser,
+        '20',
+        undefined,
+        undefined,
+        undefined,
+        '   ',
+      );
       expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
         20,
         undefined,
         'createdAt',
@@ -266,26 +331,38 @@ describe('WordsController', () => {
 
   describe('findOne', () => {
     it('should return a word', async () => {
-      const result = await controller.findOne('1');
+      const result = await controller.findOne(jwtUser, '1');
       expect(result).toEqual({ _id: '1', word: 'hello' });
-      expect(mockWordsService.findOne).toHaveBeenCalledWith('1');
+      expect(mockWordsService.findOne).toHaveBeenCalledWith(studentOid, '1');
     });
   });
 
   describe('create', () => {
     it('should create a word', async () => {
       const dto = { word: 'test', translation: 'тест' };
-      const result = await controller.create(dto);
+      const result = await controller.create(jwtUser, dto);
       expect(result).toEqual({ _id: '1', word: 'hello' });
-      expect(mockWordsService.create).toHaveBeenCalledWith(dto);
+      expect(mockWordsService.create).toHaveBeenCalledWith(studentOid, dto);
+    });
+
+    it('should reject when self read-only', async () => {
+      mockWordsAccess.resolveAccess.mockResolvedValueOnce({
+        effectiveStudentId: studentOid,
+        isSelfReadOnly: true,
+      });
+      await expect(controller.create(jwtUser, { word: 'x' })).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
   describe('update', () => {
     it('should update a word', async () => {
-      const result = await controller.update('1', { translation: 'updated' });
+      const result = await controller.update(jwtUser, '1', {
+        translation: 'updated',
+      });
       expect(result.translation).toBe('updated');
-      expect(mockWordsService.update).toHaveBeenCalledWith('1', {
+      expect(mockWordsService.update).toHaveBeenCalledWith(studentOid, '1', {
         translation: 'updated',
       });
     });
@@ -293,30 +370,38 @@ describe('WordsController', () => {
 
   describe('remove', () => {
     it('should delete a word', async () => {
-      const result = await controller.remove('1');
+      const result = await controller.remove(jwtUser, '1');
       expect(result).toEqual({ message: 'Word deleted successfully' });
-      expect(mockWordsService.remove).toHaveBeenCalledWith('1');
+      expect(mockWordsService.remove).toHaveBeenCalledWith(studentOid, '1');
     });
   });
 
   describe('getToVerifyList', () => {
     it('should return list of words to verify', async () => {
-      const result = await controller.getToVerifyList();
+      const result = await controller.getToVerifyList(jwtUser);
       expect(result).toEqual(toVerifyList);
-      expect(mockWordsService.findToVerifyList).toHaveBeenCalledWith();
+      expect(mockWordsService.findToVerifyList).toHaveBeenCalledWith(
+        studentOid,
+      );
     });
   });
 
   describe('generateVerifyQuiz', () => {
     it('should generate quiz with default count', async () => {
-      const result = await controller.generateVerifyQuiz({});
+      const result = await controller.generateVerifyQuiz(jwtUser, {});
       expect(result).toEqual(quizWords);
-      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(50);
+      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(
+        studentOid,
+        50,
+      );
     });
 
     it('should generate quiz with given count', async () => {
-      await controller.generateVerifyQuiz({ count: 20 });
-      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(20);
+      await controller.generateVerifyQuiz(jwtUser, { count: 20 });
+      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(
+        studentOid,
+        20,
+      );
     });
   });
 
@@ -332,10 +417,21 @@ describe('WordsController', () => {
           },
         ],
       };
-      await controller.submitVerifyQuiz(dto);
+      await controller.submitVerifyQuiz(jwtUser, dto);
       expect(mockWordsService.submitVerifyQuiz).toHaveBeenCalledWith(
+        studentOid,
         dto.updates,
       );
+    });
+
+    it('should reject submit when self read-only', async () => {
+      mockWordsAccess.resolveAccess.mockResolvedValueOnce({
+        effectiveStudentId: studentOid,
+        isSelfReadOnly: true,
+      });
+      await expect(
+        controller.submitVerifyQuiz(jwtUser, { updates: [] }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

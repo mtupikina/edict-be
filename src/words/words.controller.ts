@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Inject,
   Param,
@@ -11,12 +12,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import type { JwtPayload } from '../auth/auth.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateWordDto } from './dto/create-word.dto';
 import { GenerateVerifyQuizDto } from './dto/generate-verify-quiz.dto';
 import { SubmitVerifyQuizDto } from './dto/submit-verify-quiz.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Word } from './schemas/word.schema';
+import { WordsAccessService } from './words-access.service';
 import {
   QuizWord,
   ToVerifyWord,
@@ -31,34 +35,59 @@ export class WordsController {
   constructor(
     @Inject(WordsService)
     private readonly wordsService: WordsServiceContract,
+    private readonly wordsAccess: WordsAccessService,
   ) {}
 
   @Get('verify/list')
-  async getToVerifyList(): Promise<ToVerifyWord[]> {
-    return await this.wordsService.findToVerifyList();
+  async getToVerifyList(
+    @CurrentUser() user: JwtPayload,
+    @Query('studentId') studentId?: string,
+  ): Promise<ToVerifyWord[]> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    return await this.wordsService.findToVerifyList(access.effectiveStudentId);
   }
 
   @Post('verify/generate')
   async generateVerifyQuiz(
+    @CurrentUser() user: JwtPayload,
     @Body() dto: GenerateVerifyQuizDto,
+    @Query('studentId') studentId?: string,
   ): Promise<QuizWord[]> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
     const count = dto.count ?? 50;
-    return await this.wordsService.generateVerifyQuiz(count);
+    return await this.wordsService.generateVerifyQuiz(
+      access.effectiveStudentId,
+      count,
+    );
   }
 
   @Post('verify/submit')
-  async submitVerifyQuiz(@Body() dto: SubmitVerifyQuizDto): Promise<void> {
-    await this.wordsService.submitVerifyQuiz(dto.updates);
+  async submitVerifyQuiz(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: SubmitVerifyQuizDto,
+    @Query('studentId') studentId?: string,
+  ): Promise<void> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    if (access.isSelfReadOnly) {
+      throw new ForbiddenException('Read-only access');
+    }
+    await this.wordsService.submitVerifyQuiz(
+      access.effectiveStudentId,
+      dto.updates,
+    );
   }
 
   @Get()
   async findAll(
+    @CurrentUser() user: JwtPayload,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
     @Query('search') search?: string,
+    @Query('studentId') studentId?: string,
   ): Promise<WordsPage> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
     const limitNum = limit
       ? Math.min(Math.max(1, parseInt(limit, 10)), 100)
       : 20;
@@ -71,6 +100,7 @@ export class WordsController {
     const searchParam =
       typeof search === 'string' ? search.trim() || undefined : undefined;
     return this.wordsService.findAll(
+      access.effectiveStudentId,
       limitNum,
       cursor || undefined,
       validSortBy,
@@ -80,26 +110,53 @@ export class WordsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Word> {
-    return this.wordsService.findOne(id);
+  async findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Query('studentId') studentId?: string,
+  ): Promise<Word> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    return this.wordsService.findOne(access.effectiveStudentId, id);
   }
 
   @Post()
-  async create(@Body() dto: CreateWordDto): Promise<Word> {
-    return this.wordsService.create(dto);
+  async create(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateWordDto,
+    @Query('studentId') studentId?: string,
+  ): Promise<Word> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    if (access.isSelfReadOnly) {
+      throw new ForbiddenException('Read-only access');
+    }
+    return this.wordsService.create(access.effectiveStudentId, dto);
   }
 
   @Patch(':id')
   async update(
+    @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Body() dto: UpdateWordDto,
+    @Query('studentId') studentId?: string,
   ): Promise<Word> {
-    return this.wordsService.update(id, dto);
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    if (access.isSelfReadOnly) {
+      throw new ForbiddenException('Read-only access');
+    }
+    return this.wordsService.update(access.effectiveStudentId, id, dto);
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<{ message: string }> {
-    await this.wordsService.remove(id);
+  async remove(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Query('studentId') studentId?: string,
+  ): Promise<{ message: string }> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    if (access.isSelfReadOnly) {
+      throw new ForbiddenException('Read-only access');
+    }
+    await this.wordsService.remove(access.effectiveStudentId, id);
     return { message: 'Word deleted successfully' };
   }
 }
