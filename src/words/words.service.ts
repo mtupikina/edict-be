@@ -355,7 +355,10 @@ export class WordsService {
       _id: 1 as const,
     };
 
-    const studentScope = { studentId: effectiveStudentId };
+    const studentScope = {
+      studentId: effectiveStudentId,
+      toVerifyNextTime: { $ne: true },
+    };
 
     const [bucket1, bucket2, bucket3] = await Promise.all([
       n1 > 0

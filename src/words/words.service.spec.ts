@@ -673,6 +673,23 @@ describe('WordsService', () => {
       expect(limitCalls.length).toBe(3);
       // With 25% split for count 10: n1=2, n2=2, n3=6
     });
+
+    it('should exclude words with toVerifyNextTime true from all buckets', async () => {
+      mockWordModel.find.mockClear();
+      await service.generateVerifyQuiz(studentId, 8);
+      const findMock = mockWordModel.find;
+      const queries = findMock.mock.calls.map(
+        (c: [Record<string, unknown>]) => c[0],
+      );
+      expect(queries).toHaveLength(3);
+      for (const q of queries) {
+        expect(q).toMatchObject({
+          studentId: studentId,
+          toVerifyNextTime: { $ne: true },
+        });
+        expect(q).toHaveProperty('createdAt');
+      }
+    });
   });
 
   describe('submitVerifyQuiz', () => {
