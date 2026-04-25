@@ -127,7 +127,7 @@ describe('WordsStatsService', () => {
     it('returns the aggregation result', async () => {
       const data = [
         {
-          period: '2025-01',
+          period: '2025-W02',
           canEToUPct: 75,
           canUToEPct: 60,
           canEToUCount: 3,
@@ -139,6 +139,14 @@ describe('WordsStatsService', () => {
 
       const result = await service.getMasteryOverTime(studentId);
       expect(result).toEqual(data);
+    });
+
+    it('aggregates by ISO week', async () => {
+      mockQuizModel.aggregate.mockReturnValue(aggChain([]));
+      await service.getMasteryOverTime(studentId);
+
+      const [pipeline] = mockQuizModel.aggregate.mock.calls[0] as unknown[][];
+      expect(JSON.stringify(pipeline)).toContain('%G-W%V');
     });
 
     it('adds date range when from and to are given', async () => {

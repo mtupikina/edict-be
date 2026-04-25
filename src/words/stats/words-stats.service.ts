@@ -102,8 +102,10 @@ export class WordsStatsService {
       { $unwind: '$entries' },
       {
         $group: {
+          // ISO week (e.g. 2025-W14) — finer-grained than monthly so trends
+          // are visible without smoothing out short streaks.
           _id: {
-            $dateToString: { format: '%Y-%m', date: '$createdAt' },
+            $dateToString: { format: '%G-W%V', date: '$createdAt' },
           },
           canEToUCount: {
             $sum: { $cond: [{ $eq: ['$entries.canEToU', true] }, 1, 0] },
