@@ -320,4 +320,148 @@ describe('WordsAccessService', () => {
     expect(result.effectiveStudentId.equals(selfId)).toBe(true);
     expect(result.isSelfReadOnly).toBe(true);
   });
+
+  // ── readPermissions parameter ────────────────────────────────────────────
+
+  describe('readPermissions override', () => {
+    it('should grant access when user holds all required permissions', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 'tester@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.WORDS_READ, Permissions.TESTS_READ),
+      );
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+
+      const result = await service.resolveAccess('tester@x.com', undefined, [
+        Permissions.WORDS_READ,
+        Permissions.TESTS_READ,
+      ]);
+      expect(result.effectiveStudentId.equals(selfId)).toBe(true);
+    });
+
+    it('should forbid when user has only one of the required permissions', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 'tester@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.TESTS_READ),
+      );
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+
+      await expect(
+        service.resolveAccess('tester@x.com', undefined, [
+          Permissions.WORDS_READ,
+          Permissions.TESTS_READ,
+        ]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should forbid when user has only tests:read but default readPermissions (words:read) is used', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 'tester@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.TESTS_READ),
+      );
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+
+      await expect(service.resolveAccess('tester@x.com')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('should forbid when user has neither permission in the provided list (self)', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 'noone@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(new Set());
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+
+      await expect(
+        service.resolveAccess('noone@x.com', undefined, [
+          Permissions.WORDS_READ,
+          Permissions.TESTS_READ,
+        ]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should forbid when user has neither permission in the provided list (explicit self id)', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 'noone@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(new Set());
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([]);
+
+      await expect(
+        service.resolveAccess('noone@x.com', selfId.toString(), [
+          Permissions.WORDS_READ,
+          Permissions.TESTS_READ,
+        ]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should grant tutor access to tutee when user holds all required permissions', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 't@x.com',
+        roleIds: [{ name: 'tutor' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.WORDS_READ, Permissions.TESTS_READ),
+      );
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([
+        {
+          _id: tuteeId.toString(),
+          firstName: 'A',
+          lastName: 'B',
+          email: 'a@x.com',
+        },
+      ]);
+
+      const result = await service.resolveAccess(
+        't@x.com',
+        tuteeId.toString(),
+        [Permissions.WORDS_READ, Permissions.TESTS_READ],
+      );
+      expect(result.effectiveStudentId.equals(tuteeId)).toBe(true);
+      expect(result.tutorId?.equals(selfId)).toBe(true);
+    });
+
+    it('should forbid tutor access to tutee when only one required permission is held', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 't@x.com',
+        roleIds: [{ name: 'tutor' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.TESTS_READ),
+      );
+      mockUsersService.findTuteesByTutorId.mockResolvedValue([
+        {
+          _id: tuteeId.toString(),
+          firstName: 'A',
+          lastName: 'B',
+          email: 'a@x.com',
+        },
+      ]);
+
+      await expect(
+        service.resolveAccess('t@x.com', tuteeId.toString(), [
+          Permissions.WORDS_READ,
+          Permissions.TESTS_READ,
+        ]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
 });

@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 
-import { Permissions } from '../users/constants/permissions.constants';
+import {
+  Permissions,
+  type PermissionName,
+} from '../users/constants/permissions.constants';
 import { roleNamesIncludeTutorEligible } from '../users/constants/roles.constants';
 import { UsersService } from '../users/users.service';
 
@@ -17,9 +20,17 @@ export type { WordsAccessContext } from './words-access-context';
 export class WordsAccessService {
   constructor(private readonly usersService: UsersService) {}
 
+  /**
+   * Resolve which student's data the caller may read.
+   *
+   * @param readPermissions - All of these must be held to grant read access.
+   *   Defaults to `[WORDS_READ]`; pass `[WORDS_READ, TESTS_READ]` for stats
+   *   endpoints that require access to both words and quiz data.
+   */
   async resolveAccess(
     email: string,
     studentIdParam?: string,
+    readPermissions: PermissionName[] = [Permissions.WORDS_READ],
   ): Promise<WordsAccessContext> {
     const user = await this.usersService.findByEmailWithRolesPopulated(email);
     if (!user || !user._id) {
@@ -28,7 +39,7 @@ export class WordsAccessService {
     const selfId = user._id;
     const roleNames = this.extractRoleNames(user);
     const permissions = await this.usersService.getPermissionNamesForUser(user);
-    const hasWordsRead = permissions.has(Permissions.WORDS_READ);
+    const hasReadAccess = readPermissions.every((p) => permissions.has(p));
     const hasWordsWrite = permissions.has(Permissions.WORDS_WRITE);
     const isTutorPrincipal = roleNamesIncludeTutorEligible(roleNames);
 
@@ -40,7 +51,7 @@ export class WordsAccessService {
     if (emptyStudentParam && isTutorPrincipal && tutees.length > 0) {
       throw new BadRequestException('studentId is required');
     }
-    if (emptyStudentParam && !hasWordsRead) {
+    if (emptyStudentParam && !hasReadAccess) {
       throw new ForbiddenException('No access');
     }
     if (emptyStudentParam) {
@@ -56,7 +67,7 @@ export class WordsAccessService {
 
     const sid = new Types.ObjectId(trimmed);
     const targetIsSelf = sid.equals(selfId);
-    if (targetIsSelf && !hasWordsRead) {
+    if (targetIsSelf && !hasReadAccess) {
       throw new ForbiddenException('No access');
     }
     if (targetIsSelf) {
@@ -66,7 +77,7 @@ export class WordsAccessService {
       };
     }
 
-    if (!hasWordsRead) {
+    if (!hasReadAccess) {
       throw new ForbiddenException('No access');
     }
     if (!tuteeIdSet.has(trimmed)) {
