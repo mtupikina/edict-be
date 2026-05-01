@@ -21,6 +21,22 @@ export class WordsAccessService {
   constructor(private readonly usersService: UsersService) {}
 
   /**
+   * Ensures the caller may use word features that need {@link Permissions.WORDS_WRITE} but do not
+   * target a specific student document (e.g. AI enrich preview). Unlike {@link resolveAccess} with no
+   * `studentId`, tutor principals are not treated as read-only here when they hold `WORDS_WRITE`.
+   */
+  async assertWordsWritePermission(email: string): Promise<void> {
+    const user = await this.usersService.findByEmailWithRolesPopulated(email);
+    if (!user || !user._id) {
+      throw new ForbiddenException('User not found');
+    }
+    const permissions = await this.usersService.getPermissionNamesForUser(user);
+    if (!permissions.has(Permissions.WORDS_WRITE)) {
+      throw new ForbiddenException('Read-only access');
+    }
+  }
+
+  /**
    * Resolve which student's data the caller may read.
    *
    * @param readPermissions - All of these must be held to grant read access.

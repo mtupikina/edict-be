@@ -4,6 +4,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  HttpException,
   Inject,
   Param,
   Patch,
@@ -11,17 +12,22 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { instanceToPlain } from 'class-transformer';
 
 import type { JwtPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiEnrichedWordDto } from './dto/ai-enriched-word.dto';
 import { CreateWordDto } from './dto/create-word.dto';
+import { EnrichWordDto } from './dto/enrich-word.dto';
 import { GenerateVerifyQuizDto } from './dto/generate-verify-quiz.dto';
 import { SubmitVerifyQuizDto } from './dto/submit-verify-quiz.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Word } from './schemas/word.schema';
 import type { WordsAccessContext } from './words-access-context';
 import { WordsAccessService } from './words-access.service';
+import { WordEnrichmentService } from './word-enrichment.service';
+import type { WordEnrichSuccessResponse } from './word-enrichment.types';
 import {
   QuizWord,
   ToVerifyWord,
@@ -36,7 +42,9 @@ export class WordsController {
   constructor(
     @Inject(WordsService)
     private readonly wordsService: WordsServiceContract,
+    @Inject(WordsAccessService)
     private readonly wordsAccess: WordsAccessService,
+    private readonly wordEnrichment: WordEnrichmentService,
   ) {}
 
   @Get('verify/list')
@@ -80,6 +88,28 @@ export class WordsController {
       dto.updates,
       access.tutorId,
     );
+  }
+
+  @Post('enrich')
+  async enrichWord(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: EnrichWordDto,
+  ): Promise<WordEnrichSuccessResponse> {
+    await this.wordsAccess.assertWordsWritePermission(user.email);
+    const result = await this.wordEnrichment.enrich(dto.word);
+    if (!result.ok) {
+      throw new HttpException(
+        {
+          success: false,
+          error: { code: result.code, message: result.message },
+        },
+        result.httpStatus,
+      );
+    }
+    return {
+      success: true,
+      data: instanceToPlain(result.data) as AiEnrichedWordDto,
+    };
   }
 
   @Get()

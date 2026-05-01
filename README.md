@@ -66,6 +66,19 @@ This repo follows workspace and project Cursor rules (see `.cursor/rules/` at wo
 - **Coverage:** Run `npm run test:cov`. Statements, branches, functions, and lines must each be **at least 90%** for application source (see `package.json` `coverageThreshold`). `users.service.ts` and `words.controller.ts` are excluded from coverage collection (thin wrappers; still fully tested by unit tests). Add or update specs if coverage drops.
 - **Git:** Run all Git commands from the `edict-be/` directory, not from the workspace root.
 
+## Word enrichment (`POST /words/enrich`)
+
+The endpoint returns JSON matching `AiEnrichedWordDto`. Outbound calls use **`@nestjs/axios`** (`HttpModule` in `WordsModule`) to the [Mistral chat completions API](https://docs.mistral.ai/api/#tag/chat).
+
+1. Create an API key in the [Mistral console](https://console.mistral.ai/api-keys/).
+2. In `edict-be/.env`, set **`MISTRAL_KEY`**.
+3. Optional: **`MISTRAL_MODEL`** (default `mistral-small-latest`). See [Mistral models](https://docs.mistral.ai/getting-started/models/).
+4. Outbound Mistral HTTP calls use a **15 second** axios timeout; slow or stuck upstream calls fail like other network errors (**502**).
+
+### Deploy notes
+
+Set **`MISTRAL_KEY`** (and optional model) on the host (e.g. Render). The deploy workflow syncs **`MISTRAL_KEY`** from the GitHub Actions secret of the same name.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

@@ -45,6 +45,7 @@ jobs:
           JWT_EXPIRATION: ${{ secrets.JWT_EXPIRATION }}
           PORT: ${{ secrets.PORT }}
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          MISTRAL_KEY: ${{ secrets.MISTRAL_KEY }}
         run: |
           ENV_JSON=$(node -e "
             const vars = [
@@ -56,6 +57,7 @@ jobs:
               { key: 'JWT_EXPIRATION', value: process.env.JWT_EXPIRATION || '6h' },
               { key: 'PORT', value: process.env.PORT || '3000' },
               { key: 'FRONTEND_URL', value: process.env.FRONTEND_URL },
+              { key: 'MISTRAL_KEY', value: process.env.MISTRAL_KEY },
             ].filter(e => e.value !== undefined && e.value !== '');
             console.log(JSON.stringify(vars));
           ")

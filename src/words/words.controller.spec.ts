@@ -1,9 +1,10 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, HttpException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 
 import type { JwtPayload } from '../auth/auth.service';
 import { WordsAccessService } from './words-access.service';
+import { WordEnrichmentService } from './word-enrichment.service';
 import { WordsController } from './words.controller';
 import { WordsPage, WordsService } from './words.service';
 
@@ -57,6 +58,11 @@ describe('WordsController', () => {
       effectiveStudentId: studentOid,
       isSelfReadOnly: false,
     }),
+    assertWordsWritePermission: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockWordEnrichment = {
+    enrich: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -65,6 +71,7 @@ describe('WordsController', () => {
       providers: [
         { provide: WordsService, useValue: mockWordsService },
         { provide: WordsAccessService, useValue: mockWordsAccess },
+        { provide: WordEnrichmentService, useValue: mockWordEnrichment },
       ],
     }).compile();
 
@@ -73,6 +80,15 @@ describe('WordsController', () => {
     mockWordsAccess.resolveAccess.mockResolvedValue({
       effectiveStudentId: studentOid,
       isSelfReadOnly: false,
+    });
+    mockWordsAccess.assertWordsWritePermission.mockResolvedValue(undefined);
+    mockWordEnrichment.enrich.mockResolvedValue({
+      ok: true,
+      data: {
+        word: 'enriched',
+        translation: 'tr',
+        partOfSpeech: 'n',
+      },
     });
   });
 
@@ -402,6 +418,42 @@ describe('WordsController', () => {
         studentOid,
         20,
       );
+    });
+  });
+
+  describe('enrichWord', () => {
+    it('should return success payload when enrichment succeeds', async () => {
+      const result = await controller.enrichWord(jwtUser, { word: 'chair' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.word).toBe('enriched');
+      }
+      expect(mockWordEnrichment.enrich).toHaveBeenCalledWith('chair');
+      expect(mockWordsAccess.assertWordsWritePermission).toHaveBeenCalledWith(
+        jwtUser.email,
+      );
+    });
+
+    it('should reject enrich when user lacks words write permission', async () => {
+      mockWordsAccess.assertWordsWritePermission.mockRejectedValueOnce(
+        new ForbiddenException('Read-only access'),
+      );
+      await expect(
+        controller.enrichWord(jwtUser, { word: 'x' }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockWordEnrichment.enrich).not.toHaveBeenCalled();
+    });
+
+    it('should throw HttpException when enrichment fails', async () => {
+      mockWordEnrichment.enrich.mockResolvedValueOnce({
+        ok: false,
+        code: 'AI_PARSE',
+        message: 'bad',
+        httpStatus: 422,
+      });
+      await expect(
+        controller.enrichWord(jwtUser, { word: 'x' }),
+      ).rejects.toThrow(HttpException);
     });
   });
 

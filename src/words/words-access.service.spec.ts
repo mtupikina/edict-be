@@ -464,4 +464,44 @@ describe('WordsAccessService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe('assertWordsWritePermission', () => {
+    it('should resolve when user has WORDS_WRITE', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 't@x.com',
+        roleIds: [{ name: 'tutor' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.WORDS_WRITE),
+      );
+
+      await expect(
+        service.assertWordsWritePermission('t@x.com'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should forbid when user lacks WORDS_WRITE', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue({
+        _id: selfId,
+        email: 's@x.com',
+        roleIds: [{ name: 'student' }],
+      });
+      mockUsersService.getPermissionNamesForUser.mockResolvedValue(
+        permissionSet(Permissions.WORDS_READ),
+      );
+
+      await expect(
+        service.assertWordsWritePermission('s@x.com'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should forbid when user not found', async () => {
+      mockUsersService.findByEmailWithRolesPopulated.mockResolvedValue(null);
+
+      await expect(
+        service.assertWordsWritePermission('nope@x.com'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
 });
