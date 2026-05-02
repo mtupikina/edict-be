@@ -1,0 +1,33 @@
+---
+description: Mandatory agent workflow for every edit in this NestJS app (rules first, reporting, verification)
+alwaysApply: true
+---
+
+# Agent workflow (edict-be)
+
+**These steps override speed or brevity.** Follow workspace `.cursor/rules/apply-project-rules.mdc` and this file together.
+
+## Before the first code edit in this repo (each task or fresh context)
+
+1. Read **workspace root** `.cursor/rules/` (at least `apply-project-rules.mdc`, `two-separate-repos.mdc`).
+2. Read **every** `edict-be/.cursor/rules/*.mdc` that applies (open the files; do not assume from memory).
+
+## In the first substantive reply where you change or propose code
+
+Include a **Rules read** list: every rule file from (1) and (2) you actually read (path + filename).
+
+## While working in `edict-be/`
+
+- Obey all `edict-be/.cursor/rules/` (lint, coverage ≥90%, commit gate, tests for services/controllers/guards you change).
+- **New or changed application code:** add or update **`.spec.ts`** so coverage thresholds stay met.
+
+## Before you tell the user the task is done
+
+From **`edict-be/`** (not the workspace root):
+
+1. Run **`npm run lint`**. Fix all issues.
+2. Run **`npm run test`** (and **`npm run test:cov`** when rules or the change scope require coverage). State which commands you ran.
+
+## Git
+
+Never run `git` from the workspace root. Use `edict-be/` for this app. See `two-separate-repos.mdc`.

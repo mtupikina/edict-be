@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -18,6 +19,7 @@ export interface ToVerifyWord extends Pick<
   Word,
   | 'word'
   | 'translation'
+  | 'examples'
   | 'lastVerifiedAt'
   | 'canEToU'
   | 'canUToE'
@@ -31,7 +33,7 @@ export interface ToVerifyWord extends Pick<
 /** Word fields for generated quiz. */
 export interface QuizWord extends Pick<
   Word,
-  'word' | 'translation' | 'canEToU' | 'canUToE' | 'lastVerifiedAt'
+  'word' | 'translation' | 'examples' | 'canEToU' | 'canUToE' | 'lastVerifiedAt'
 > {
   _id: string;
   /** Set by Mongoose timestamps. */
@@ -100,13 +102,17 @@ function andWithStudentFilter(
 }
 
 @Injectable()
-export class WordsService {
+export class WordsService implements OnModuleInit {
   constructor(
     @InjectModel(Word.name)
     private readonly wordModel: Model<WordDocument>,
     @InjectModel(Quiz.name)
     private readonly quizModel: Model<QuizDocument>,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.wordModel.syncIndexes();
+  }
 
   async findAll(
     effectiveStudentId: Types.ObjectId,
@@ -296,6 +302,7 @@ export class WordsService {
   private static readonly VERIFY_LIST_PROJECTION = {
     word: 1,
     translation: 1,
+    examples: 1,
     lastVerifiedAt: 1,
     canEToU: 1,
     canUToE: 1,
@@ -306,6 +313,7 @@ export class WordsService {
   private static readonly QUIZ_WORD_PROJECTION = {
     word: 1,
     translation: 1,
+    examples: 1,
     canEToU: 1,
     canUToE: 1,
     lastVerifiedAt: 1,
@@ -327,6 +335,7 @@ export class WordsService {
         _id: String(d._id),
         word: d.word,
         translation: d.translation,
+        examples: Array.isArray(d.examples) ? d.examples : [],
         lastVerifiedAt: d.lastVerifiedAt,
         canEToU: d.canEToU,
         canUToE: d.canUToE,
@@ -406,6 +415,7 @@ export class WordsService {
         _id: String(d._id),
         word: d.word,
         translation: d.translation,
+        examples: Array.isArray(d.examples) ? d.examples : [],
         canEToU: d.canEToU,
         canUToE: d.canUToE,
         lastVerifiedAt: d.lastVerifiedAt,

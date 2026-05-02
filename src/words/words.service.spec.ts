@@ -130,6 +130,7 @@ describe('WordsService', () => {
       insertedIds: {},
     }),
     findOneAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
+    syncIndexes: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {

@@ -71,12 +71,13 @@ export class Word {
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: 'User',
-    index: true,
   })
   studentId?: Types.ObjectId;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   word: string;
 }
 
 export const WordSchema = SchemaFactory.createForClass(Word);
+
+WordSchema.index({ studentId: 1, word: 1 }, { unique: true });
