@@ -9,7 +9,8 @@ import { buildWordEnrichmentPrompt } from './prompts/word-enrichment.prompt';
 import type { WordEnrichResult } from './word-enrichment.types';
 import { parseAndValidateAiEnrichedWordJson } from './word-enrichment-parse.util';
 
-const DEFAULT_MISTRAL_MODEL = 'mistral-small-latest';
+/** Free-tier Small is currently 0 req/min; Ministral 8B still allows realtime completions. */
+const DEFAULT_MISTRAL_MODEL = 'ministral-8b-2512';
 
 /** Per-request axios timeout for Mistral chat completions (full request cycle). */
 const MISTRAL_HTTP_TIMEOUT_MS = 15_000;

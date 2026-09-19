@@ -72,7 +72,7 @@ The endpoint returns JSON matching `AiEnrichedWordDto`. Outbound calls use **`@n
 
 1. Create an API key in the [Mistral console](https://console.mistral.ai/api-keys/).
 2. In `edict-be/.env`, set **`MISTRAL_KEY`**.
-3. Optional: **`MISTRAL_MODEL`** (default `mistral-small-latest`). See [Mistral models](https://docs.mistral.ai/getting-started/models/).
+3. Optional: **`MISTRAL_MODEL`** (default `ministral-8b-2512`). On the Free plan, `mistral-small-latest` may return `429` with `0` requests/minute; Ministral still has realtime quota. See [Mistral models](https://docs.mistral.ai/getting-started/models/).
 4. Outbound Mistral HTTP calls use a **15 second** axios timeout; slow or stuck upstream calls fail like other network errors (**502**).
 
 ### Deploy notes

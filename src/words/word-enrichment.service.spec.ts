@@ -150,6 +150,9 @@ describe('WordEnrichmentService', () => {
       Authorization: 'Bearer test-mistral-key',
     });
     expect(postAxiosConfig(mockHttp.post)).toMatchObject({ timeout: 15_000 });
+    expect(postBody<{ model: string }>(mockHttp.post).model).toBe(
+      'ministral-8b-2512',
+    );
   });
 
   it('should use MISTRAL_MODEL from config when set', async () => {
