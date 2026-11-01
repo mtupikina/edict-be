@@ -21,6 +21,7 @@ import { AiEnrichedWordDto } from './dto/ai-enriched-word.dto';
 import { CreateWordDto } from './dto/create-word.dto';
 import { EnrichWordDto } from './dto/enrich-word.dto';
 import { GenerateVerifyQuizDto } from './dto/generate-verify-quiz.dto';
+import { SetKnownWellDto } from './dto/set-known-well.dto';
 import { SubmitVerifyQuizDto } from './dto/submit-verify-quiz.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Word } from './schemas/word.schema';
@@ -31,6 +32,7 @@ import type { WordEnrichSuccessResponse } from './word-enrichment.types';
 import {
   QuizWord,
   ToVerifyWord,
+  WordsKnownWellFilter,
   WordsPage,
   WordsService,
   type WordsServiceContract,
@@ -122,6 +124,7 @@ export class WordsController {
     @Query('order') order?: string,
     @Query('search') search?: string,
     @Query('studentId') studentId?: string,
+    @Query('knownWell') knownWell?: string,
   ): Promise<WordsPage> {
     const access = await this.wordsAccess.resolveAccess(user.email, studentId);
     const limitNum = limit
@@ -135,6 +138,8 @@ export class WordsController {
     const validOrder = order === 'asc' || order === 'desc' ? order : 'desc';
     const searchParam =
       typeof search === 'string' ? search.trim() || undefined : undefined;
+    const knownWellFilter: WordsKnownWellFilter | undefined =
+      knownWell === 'known' || knownWell === 'learning' ? knownWell : undefined;
     return this.wordsService.findAll(
       access.effectiveStudentId,
       limitNum,
@@ -142,6 +147,24 @@ export class WordsController {
       validSortBy,
       validOrder,
       searchParam,
+      ...(knownWellFilter ? [knownWellFilter] : []),
+    );
+  }
+
+  @Patch('known-well')
+  async setKnownWell(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: SetKnownWellDto,
+    @Query('studentId') studentId?: string,
+  ): Promise<{ modifiedCount: number }> {
+    const access = await this.wordsAccess.resolveAccess(user.email, studentId);
+    if (access.isSelfReadOnly) {
+      throw new ForbiddenException('Read-only access');
+    }
+    return this.wordsService.setKnownWell(
+      access.effectiveStudentId,
+      dto.knownWell,
+      dto.wordIds,
     );
   }
 

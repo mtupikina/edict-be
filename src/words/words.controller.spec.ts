@@ -51,6 +51,7 @@ describe('WordsController', () => {
     findToVerifyList: jest.fn().mockResolvedValue(toVerifyList),
     generateVerifyQuiz: jest.fn().mockResolvedValue(quizWords),
     submitVerifyQuiz: jest.fn().mockResolvedValue(undefined),
+    setKnownWell: jest.fn().mockResolvedValue({ modifiedCount: 3 }),
   };
 
   const mockWordsAccess = {
@@ -342,6 +343,56 @@ describe('WordsController', () => {
         'desc',
         undefined,
       );
+    });
+
+    it('should pass knownWell filter when it is known or learning', async () => {
+      await controller.findAll(
+        jwtUser,
+        '20',
+        undefined,
+        'createdAt',
+        'desc',
+        undefined,
+        undefined,
+        'known',
+      );
+      expect(mockWordsService.findAll).toHaveBeenCalledWith(
+        studentOid,
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        undefined,
+        'known',
+      );
+    });
+  });
+
+  describe('setKnownWell', () => {
+    it('should update the selected words', async () => {
+      const result = await controller.setKnownWell(jwtUser, {
+        knownWell: true,
+        wordIds: ['507f1f77bcf86cd799439011'],
+      });
+      expect(result).toEqual({ modifiedCount: 3 });
+      expect(mockWordsService.setKnownWell).toHaveBeenCalledWith(
+        studentOid,
+        true,
+        ['507f1f77bcf86cd799439011'],
+      );
+    });
+
+    it('should reject when self read-only', async () => {
+      mockWordsAccess.resolveAccess.mockResolvedValueOnce({
+        effectiveStudentId: studentOid,
+        isSelfReadOnly: true,
+      });
+      await expect(
+        controller.setKnownWell(jwtUser, {
+          knownWell: false,
+          wordIds: ['507f1f77bcf86cd799439011'],
+        }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 

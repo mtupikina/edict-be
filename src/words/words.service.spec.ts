@@ -130,6 +130,7 @@ describe('WordsService', () => {
       insertedIds: {},
     }),
     findOneAndDelete: jest.fn().mockReturnValue(execChain(mockWord)),
+    updateMany: jest.fn().mockResolvedValue({ modifiedCount: 2 }),
     syncIndexes: jest.fn().mockResolvedValue(undefined),
   };
 
@@ -401,6 +402,56 @@ describe('WordsService', () => {
       expect(query.$and[1].word.flags).toContain('i');
     });
 
+    it('should limit the list to words marked known well', async () => {
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(
+        studentId,
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        undefined,
+        'known',
+      );
+      expect(mockWordModel.find).toHaveBeenCalledWith({
+        $and: [{ studentId }, { knownWell: true }],
+      });
+      expect(mockWordModel.countDocuments).toHaveBeenCalledWith({
+        $and: [{ studentId }, { knownWell: true }],
+      });
+    });
+
+    it('should limit the list to words that are not known well', async () => {
+      mockWordModel.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanChain([mockWord])),
+        }),
+      });
+      await service.findAll(
+        studentId,
+        20,
+        undefined,
+        'createdAt',
+        'desc',
+        'cat',
+        'learning',
+      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const query = mockWordModel.find.mock.calls[0][0] as {
+        $and: [
+          { studentId: Types.ObjectId },
+          { $and: [{ knownWell: { $ne: boolean } }, { word: RegExp }] },
+        ];
+      };
+      expect(query.$and[0]).toEqual({ studentId });
+      expect(query.$and[1].$and[0]).toEqual({ knownWell: { $ne: true } });
+      expect(query.$and[1].$and[1].word.source).toBe('cat');
+    });
+
     it('should not add search filter when search is empty string', async () => {
       mockWordModel.find.mockReturnValueOnce({
         sort: jest.fn().mockReturnValue({
@@ -477,6 +528,27 @@ describe('WordsService', () => {
       expect(query.$and[1].word).toBeInstanceOf(RegExp);
       expect(query.$and[1].word.source).toBe('a\\+b');
       expect(query.$and[1].word.flags).toContain('i');
+    });
+  });
+
+  describe('setKnownWell', () => {
+    it('should set knownWell on the selected words for this student', async () => {
+      const id = String(mockWord._id);
+      const result = await service.setKnownWell(studentId, true, [
+        id,
+        'not-an-id',
+      ]);
+      expect(result).toEqual({ modifiedCount: 2 });
+      expect(mockWordModel.updateMany).toHaveBeenCalledWith(
+        { studentId, _id: { $in: [mockWord._id] } },
+        { $set: { knownWell: true } },
+      );
+    });
+
+    it('should not update anything when no word ids are selected', async () => {
+      const result = await service.setKnownWell(studentId, true, []);
+      expect(result).toEqual({ modifiedCount: 0 });
+      expect(mockWordModel.updateMany).not.toHaveBeenCalled();
     });
   });
 

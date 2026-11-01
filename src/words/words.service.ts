@@ -44,6 +44,7 @@ export interface QuizWord extends Pick<
 
 export type WordsSortBy = 'word' | 'translation' | 'createdAt';
 export type WordsOrder = 'asc' | 'desc';
+export type WordsKnownWellFilter = 'learning' | 'known';
 
 export interface WordsPage {
   items: Word[];
@@ -82,7 +83,13 @@ export interface WordsServiceContract {
     sortBy?: WordsSortBy,
     order?: WordsOrder,
     search?: string,
+    knownWellFilter?: WordsKnownWellFilter,
   ): Promise<WordsPage>;
+  setKnownWell(
+    effectiveStudentId: Types.ObjectId,
+    knownWell: boolean,
+    wordIds: string[],
+  ): Promise<{ modifiedCount: number }>;
   findOne(effectiveStudentId: Types.ObjectId, id: string): Promise<Word>;
   create(effectiveStudentId: Types.ObjectId, dto: CreateWordDto): Promise<Word>;
   update(
@@ -109,6 +116,32 @@ function andWithStudentFilter(
   return { $and: [studentFilter, query] };
 }
 
+function mergeQuery(
+  query: Record<string, unknown>,
+  extra: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!extra) {
+    return query;
+  }
+  if (Object.keys(query).length === 0) {
+    return extra;
+  }
+  return { $and: [extra, query] };
+}
+
+/** `known` is only explicit true. `learning` is false or unset. */
+function knownWellClause(
+  filter: WordsKnownWellFilter | undefined,
+): Record<string, unknown> | null {
+  if (filter === 'known') {
+    return { knownWell: true };
+  }
+  if (filter === 'learning') {
+    return { knownWell: { $ne: true } };
+  }
+  return null;
+}
+
 @Injectable()
 export class WordsService implements OnModuleInit {
   constructor(
@@ -129,6 +162,7 @@ export class WordsService implements OnModuleInit {
     sortBy: WordsSortBy = 'createdAt',
     order: WordsOrder = 'desc',
     search?: string,
+    knownWellFilter?: WordsKnownWellFilter,
   ): Promise<WordsPage> {
     const sortDir = order === 'asc' ? 1 : -1;
     const sort: Record<string, 1 | -1> = { [sortBy]: sortDir, _id: sortDir };
@@ -174,16 +208,12 @@ export class WordsService implements OnModuleInit {
       }
     }
 
-    if (searchFilter) {
-      query =
-        Object.keys(query).length > 0
-          ? { $and: [searchFilter, query] }
-          : searchFilter;
-    }
-
+    query = mergeQuery(query, searchFilter);
+    query = mergeQuery(query, knownWellClause(knownWellFilter));
     query = andWithStudentFilter(query, effectiveStudentId);
 
-    let countQuery: Record<string, unknown> = searchFilter ?? {};
+    let countQuery = mergeQuery({}, searchFilter);
+    countQuery = mergeQuery(countQuery, knownWellClause(knownWellFilter));
     countQuery = andWithStudentFilter(countQuery, effectiveStudentId);
 
     const [items, totalCount] = await Promise.all([
@@ -224,6 +254,25 @@ export class WordsService implements OnModuleInit {
       hasMore,
       totalCount,
     };
+  }
+
+  async setKnownWell(
+    effectiveStudentId: Types.ObjectId,
+    knownWell: boolean,
+    wordIds: string[],
+  ): Promise<{ modifiedCount: number }> {
+    const ids = wordIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (ids.length === 0) {
+      return { modifiedCount: 0 };
+    }
+
+    const result = await this.wordModel.updateMany(
+      { studentId: effectiveStudentId, _id: { $in: ids } },
+      { $set: { knownWell } },
+    );
+    return { modifiedCount: result.modifiedCount };
   }
 
   async findOne(effectiveStudentId: Types.ObjectId, id: string): Promise<Word> {
