@@ -27,6 +27,10 @@ export class QuizWordEntry {
 
   @Prop({ default: false })
   toVerifyNextTime: boolean;
+
+  /** Snapshot of the word's known-well mark at submit time. Omitted when the client did not send it. */
+  @Prop({ type: Boolean })
+  knownWell?: boolean;
 }
 
 export const QuizWordEntrySchema = SchemaFactory.createForClass(QuizWordEntry);

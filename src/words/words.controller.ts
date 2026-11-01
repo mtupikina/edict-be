@@ -67,6 +67,7 @@ export class WordsController {
     return await this.wordsService.generateVerifyQuiz(
       access.effectiveStudentId,
       count,
+      dto.includeKnownWell === true,
     );
   }
 

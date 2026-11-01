@@ -49,6 +49,11 @@ export class WordVerifyUpdateDto {
   @IsOptional()
   @IsBoolean()
   toVerifyNextTime?: boolean;
+
+  /** When omitted, the stored knownWell value on the word is left unchanged. */
+  @IsOptional()
+  @IsBoolean()
+  knownWell?: boolean;
 }
 
 export class SubmitVerifyQuizDto {

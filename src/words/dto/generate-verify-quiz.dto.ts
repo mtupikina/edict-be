@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GenerateVerifyQuizDto {
@@ -8,4 +8,9 @@ export class GenerateVerifyQuizDto {
   @Min(1, { message: 'Count must be at least 1' })
   @Max(100, { message: 'Count must be at most 100' })
   count?: number = 50;
+
+  /** When omitted or false, words marked known well are left out of the quiz. */
+  @IsOptional()
+  @IsBoolean()
+  includeKnownWell?: boolean;
 }

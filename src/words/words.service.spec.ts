@@ -691,6 +691,64 @@ describe('WordsService', () => {
         expect(q).toHaveProperty('createdAt');
       }
     });
+
+    it('should leave out known-well words unless includeKnownWell is true', async () => {
+      mockWordModel.find.mockClear();
+      await service.generateVerifyQuiz(studentId, 8, false);
+      const excluded = mockWordModel.find.mock.calls.map(
+        (c: [Record<string, unknown>]) => c[0],
+      );
+      expect(excluded).toHaveLength(3);
+      for (const q of excluded) {
+        expect(q).toMatchObject({ knownWell: { $ne: true } });
+      }
+
+      mockWordModel.find.mockClear();
+      await service.generateVerifyQuiz(studentId, 8, true);
+      const included = mockWordModel.find.mock.calls.map(
+        (c: [Record<string, unknown>]) => c[0],
+      );
+      expect(included).toHaveLength(3);
+      for (const q of included) {
+        expect(q).not.toHaveProperty('knownWell');
+        expect(q).toMatchObject({
+          studentId,
+          toVerifyNextTime: { $ne: true },
+        });
+      }
+    });
+
+    it('should return knownWell false when the word has no stored value', async () => {
+      const result = await service.generateVerifyQuiz(studentId, 4);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.every((word) => word.knownWell === false)).toBe(true);
+    });
+
+    it('should return knownWell true when the word is marked', async () => {
+      const original = mockWordModel.find.getMockImplementation();
+      mockWordModel.find.mockImplementation(() =>
+        quizBucketChain([
+          {
+            _id: new Types.ObjectId(),
+            word: 'quiz',
+            translation: 'квіз',
+            canEToU: false,
+            canUToE: false,
+            knownWell: true,
+            lastVerifiedAt: null,
+          },
+        ]),
+      );
+      try {
+        const result = await service.generateVerifyQuiz(studentId, 4, true);
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every((word) => word.knownWell === true)).toBe(true);
+      } finally {
+        if (original) {
+          mockWordModel.find.mockImplementation(original);
+        }
+      }
+    });
   });
 
   describe('submitVerifyQuiz', () => {
@@ -724,6 +782,7 @@ describe('WordsService', () => {
         canUToE: false,
         toVerifyNextTime: true,
       });
+      expect(ops[0].updateOne.update.$set).not.toHaveProperty('knownWell');
       expect(ops[0].updateOne.update.$set.lastVerifiedAt).toBeInstanceOf(Date);
       expect(mockQuizModel.create).toHaveBeenCalledTimes(1);
       type CreatedQuizArg = {
@@ -797,6 +856,50 @@ describe('WordsService', () => {
           ],
         }),
       );
+    });
+
+    it('should set knownWell on the word and quiz entry when submitted', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+          knownWell: true,
+          canEToU: true,
+          canUToE: true,
+          toVerifyNextTime: false,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates);
+      type VerifyQuizBulkOp = {
+        updateOne: { update: { $set: Record<string, unknown> } };
+      };
+      const [ops] = mockWordModel.bulkWrite.mock.calls[0] as unknown as [
+        VerifyQuizBulkOp[],
+      ];
+      expect(ops[0].updateOne.update.$set).toMatchObject({ knownWell: true });
+      expect(mockQuizModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entries: [expect.objectContaining({ knownWell: true })],
+        }),
+      );
+    });
+
+    it('should clear knownWell when submitted as false', async () => {
+      const updates: WordVerifyUpdateDto[] = [
+        {
+          wordId: String(mockWord._id),
+          word: mockWord.word,
+          knownWell: false,
+        },
+      ];
+      await service.submitVerifyQuiz(studentId, updates);
+      type VerifyQuizBulkOp = {
+        updateOne: { update: { $set: Record<string, unknown> } };
+      };
+      const [ops] = mockWordModel.bulkWrite.mock.calls[0] as unknown as [
+        VerifyQuizBulkOp[],
+      ];
+      expect(ops[0].updateOne.update.$set).toMatchObject({ knownWell: false });
     });
 
     it('should persist canSpell false on quiz entry when explicitly submitted', async () => {

@@ -35,6 +35,10 @@ export class Word {
   @Prop()
   description?: string;
 
+  /** Optional. Unset and false both mean the student does not know the word well yet. */
+  @Prop({ type: Boolean })
+  knownWell?: boolean;
+
   @Prop({ type: [String], default: [] })
   examples: string[];
 
@@ -81,3 +85,8 @@ export class Word {
 export const WordSchema = SchemaFactory.createForClass(Word);
 
 WordSchema.index({ studentId: 1, word: 1 }, { unique: true });
+
+/** True only when the word is explicitly marked known well. */
+export function isKnownWell(knownWell: boolean | null | undefined): boolean {
+  return knownWell === true;
+}

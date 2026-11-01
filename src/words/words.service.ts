@@ -11,7 +11,7 @@ import { Types } from 'mongoose';
 import { CreateWordDto } from './dto/create-word.dto';
 import { UpdateWordDto } from './dto/update-word.dto';
 import { Quiz, QuizDocument } from './schemas/quiz.schema';
-import { Word, WordDocument } from './schemas/word.schema';
+import { isKnownWell, Word, WordDocument } from './schemas/word.schema';
 import { WordVerifyUpdateDto } from './dto/submit-verify-quiz.dto';
 
 /** Word fields for the to-verify list (route list). */
@@ -36,6 +36,8 @@ export interface QuizWord extends Pick<
   'word' | 'translation' | 'examples' | 'canEToU' | 'canUToE' | 'lastVerifiedAt'
 > {
   _id: string;
+  /** True only when the stored value is true. Unset is returned as false. */
+  knownWell: boolean;
   /** Set by Mongoose timestamps. */
   createdAt?: Date;
 }
@@ -55,12 +57,18 @@ interface CursorPayload {
   id: string;
 }
 
+/** Keeps a submitted flag only when the client sent a real boolean. */
+function submittedKnownWell(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 /** Controller-facing contract so the controller can depend on a resolved type. */
 export interface WordsServiceContract {
   findToVerifyList(effectiveStudentId: Types.ObjectId): Promise<ToVerifyWord[]>;
   generateVerifyQuiz(
     effectiveStudentId: Types.ObjectId,
     count: number,
+    includeKnownWell?: boolean,
   ): Promise<QuizWord[]>;
   submitVerifyQuiz(
     effectiveStudentId: Types.ObjectId,
@@ -316,6 +324,7 @@ export class WordsService implements OnModuleInit {
     examples: 1,
     canEToU: 1,
     canUToE: 1,
+    knownWell: 1,
     lastVerifiedAt: 1,
     createdAt: 1,
   } as const;
@@ -348,6 +357,7 @@ export class WordsService implements OnModuleInit {
   async generateVerifyQuiz(
     effectiveStudentId: Types.ObjectId,
     count: number,
+    includeKnownWell = false,
   ): Promise<QuizWord[]> {
     const now = new Date();
     const hundredDaysAgo = new Date(now);
@@ -367,6 +377,7 @@ export class WordsService implements OnModuleInit {
     const studentScope = {
       studentId: effectiveStudentId,
       toVerifyNextTime: { $ne: true },
+      ...(includeKnownWell ? {} : { knownWell: { $ne: true } }),
     };
 
     const [bucket1, bucket2, bucket3] = await Promise.all([
@@ -418,6 +429,7 @@ export class WordsService implements OnModuleInit {
         examples: Array.isArray(d.examples) ? d.examples : [],
         canEToU: d.canEToU,
         canUToE: d.canUToE,
+        knownWell: isKnownWell(d.knownWell),
         lastVerifiedAt: d.lastVerifiedAt,
         createdAt: d.createdAt,
       };
@@ -434,38 +446,46 @@ export class WordsService implements OnModuleInit {
     }
     const now = new Date();
 
-    const entries = updates.map((u) => ({
-      wordId: new Types.ObjectId(u.wordId),
-      word: u.word,
-      ...(u.translation !== undefined && u.translation !== ''
-        ? { translation: u.translation }
-        : {}),
-      ...(u.canSpell !== undefined ? { canSpell: u.canSpell } : {}),
-      canEToU: u.canEToU ?? false,
-      canUToE: u.canUToE ?? false,
-      toVerifyNextTime: u.toVerifyNextTime ?? false,
-    }));
+    const entries = updates.map((u) => {
+      const knownWell = submittedKnownWell(u.knownWell);
+      return {
+        wordId: new Types.ObjectId(u.wordId),
+        word: u.word,
+        ...(u.translation !== undefined && u.translation !== ''
+          ? { translation: u.translation }
+          : {}),
+        ...(u.canSpell !== undefined ? { canSpell: u.canSpell } : {}),
+        canEToU: u.canEToU ?? false,
+        canUToE: u.canUToE ?? false,
+        toVerifyNextTime: u.toVerifyNextTime ?? false,
+        ...(knownWell !== undefined ? { knownWell } : {}),
+      };
+    });
 
     await this.wordModel.bulkWrite(
-      updates.map((u) => ({
-        updateOne: {
-          filter: {
-            _id: new Types.ObjectId(u.wordId),
-            studentId: effectiveStudentId,
-          },
-          update: {
-            $set: {
-              ...(u.canSpell !== undefined && { canSpell: u.canSpell }),
-              ...(u.canEToU !== undefined && { canEToU: u.canEToU }),
-              ...(u.canUToE !== undefined && { canUToE: u.canUToE }),
-              ...(u.toVerifyNextTime !== undefined && {
-                toVerifyNextTime: u.toVerifyNextTime,
-              }),
-              lastVerifiedAt: now,
+      updates.map((u) => {
+        const knownWell = submittedKnownWell(u.knownWell);
+        return {
+          updateOne: {
+            filter: {
+              _id: new Types.ObjectId(u.wordId),
+              studentId: effectiveStudentId,
+            },
+            update: {
+              $set: {
+                ...(u.canSpell !== undefined && { canSpell: u.canSpell }),
+                ...(u.canEToU !== undefined && { canEToU: u.canEToU }),
+                ...(u.canUToE !== undefined && { canUToE: u.canUToE }),
+                ...(u.toVerifyNextTime !== undefined && {
+                  toVerifyNextTime: u.toVerifyNextTime,
+                }),
+                ...(knownWell !== undefined ? { knownWell } : {}),
+                lastVerifiedAt: now,
+              },
             },
           },
-        },
-      })),
+        };
+      }),
       { ordered: false },
     );
 

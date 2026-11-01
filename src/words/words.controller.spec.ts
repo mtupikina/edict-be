@@ -409,6 +409,7 @@ describe('WordsController', () => {
       expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(
         studentOid,
         50,
+        false,
       );
     });
 
@@ -417,6 +418,19 @@ describe('WordsController', () => {
       expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(
         studentOid,
         20,
+        false,
+      );
+    });
+
+    it('should pass includeKnownWell when the tutor asks for known-well words', async () => {
+      await controller.generateVerifyQuiz(jwtUser, {
+        count: 10,
+        includeKnownWell: true,
+      });
+      expect(mockWordsService.generateVerifyQuiz).toHaveBeenCalledWith(
+        studentOid,
+        10,
+        true,
       );
     });
   });
